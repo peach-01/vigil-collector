@@ -60,11 +60,11 @@ class DefaultFirebaseOptions {
 
   static const FirebaseOptions ios = FirebaseOptions(
     apiKey: 'AIzaSyBgAql2NzwXUqRfaHkmUxAdgW3WcklQzfI',
-    appId: '1:233586415711:ios:4a28a4bb451ea8fcfb23ea',
+    appId: '1:233586415711:ios:f3ee7dbc6267c6b4fb23ea',
     messagingSenderId: '233586415711',
     projectId: 'vigil-cloud-c9e28',
     storageBucket: 'vigil-cloud-c9e28.firebasestorage.app',
-    iosBundleId: 'com.example.vigilCollector',
+    iosBundleId: 'com.ardentis.vigilCollector',
   );
 
   static const FirebaseOptions macos = FirebaseOptions(
