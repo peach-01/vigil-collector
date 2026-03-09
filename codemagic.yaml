@@ -40,7 +40,9 @@ workflows:
 
       - name: Build IPA
         script: |
-          flutter build ipa --release \
+          flutter build ipa \
+            --release \
+            --export-options-plist=/Users/builder/export_options.plist \
             --build-name=1.0.$BUILD_NUMBER \
             --build-number=$BUILD_NUMBER
 
