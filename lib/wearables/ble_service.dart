@@ -1,4 +1,4 @@
-import '../data/sensor_packet.dart';
+/*import '../data/sensor_packet.dart';
 import 'wearable_service.dart';
 import 'dart:async';
 
@@ -18,9 +18,9 @@ class BleWearableService implements WearableService {
 
   @override
   Future<void> disconnect() async {}
-}
+}*/
 
-/*import 'dart:async';
+import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import '../data/sensor_packet.dart';
@@ -151,4 +151,4 @@ class BleWearableService implements WearableService {
   Future<void> disconnect() async {
     await _device?.disconnect();
   }
-}*/
+}
