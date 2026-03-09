@@ -50,12 +50,19 @@
 	<string>This app uses Bluetooth to scan for nearby devices.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>This app uses Bluetooth to communicate with devices.</string>
+	<key>NSBluetoothAlwaysAndWhenInUseUsageDescription</key>
+	<string>This app uses Bluetooth to connect to wearable devices.</string>
 
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowArbitraryLoads</key>
 		<true/>
 	</dict>
+
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>bluetooth-central</string>
+	</array>
 
 	<key>NSCameraUsageDescription</key>
 	<string>This app needs camera access to scan codes.</string>
