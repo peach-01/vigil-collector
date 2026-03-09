@@ -43,6 +43,7 @@ workflows:
           flutter build ipa \
             --release \
             --export-method=app-store \
+            --no-codesign \
             --build-name=1.0.$BUILD_NUMBER \
             --build-number=$BUILD_NUMBER
 
