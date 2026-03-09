@@ -37,17 +37,16 @@ class BleWearableService implements WearableService {
     }
 
     await FlutterBluePlus.startScan(timeout: const Duration(seconds: 10));
-    
-    await for (final results in FlutterBluePlus.scanResults) {
-      for (final r in results) {
-        if (_isVigilWearable(r.device)) {
-          await FlutterBluePlus.stopScan();
-          _device = r.device;
-          await _device!.connect(autoConnect: false);
-          await _discoverServices();
-          await _startStreaming();
-          return;
-        }
+    final results = await FlutterBluePlus.scanResults.first;
+
+    for (final r in results) {
+      if (_isVigilWearable(r.device)) {
+        await FlutterBluePlus.stopScan();
+        _device = r.device;
+        await _device!.connect(autoConnect: false);
+        await _discoverServices();
+        await _startStreaming();
+        return;
       }
     }
 
