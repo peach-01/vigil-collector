@@ -4,14 +4,17 @@ platform :ios, '12.0'
 # CocoaPods analytics
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
-# Prevent CocoaPods from building symlinks in Xcode 14+
 install! 'cocoapods', :disable_input_output_paths => true
 
 target 'Runner' do
   use_frameworks!
   use_modular_headers!
 
-  # Flutter pods
-  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+  # Flutter Pod helper
+  flutter_application_path = File.expand_path('..', __FILE__)
+  load File.join(flutter_application_path, '.flutter-plugins-dependencies', 'ios', 'flutter_plugins.rb') if File.exist?(File.join(flutter_application_path, '.flutter-plugins-dependencies', 'ios', 'flutter_plugins.rb'))
+
+  # This ensures Flutter pods are installed
+  eval(File.read(File.join(flutter_application_path, '.flutter-plugins-dependencies', 'ios', 'podhelper.rb')), binding) if File.exist?(File.join(flutter_application_path, '.flutter-plugins-dependencies', 'ios', 'podhelper.rb'))
 
 end
