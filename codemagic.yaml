@@ -11,6 +11,7 @@ workflows:
 
       ios_signing:
         distribution_type: app_store
+        automatic_signing: true
         bundle_identifier: com.ardentis.vigilCollector
 
       vars:
