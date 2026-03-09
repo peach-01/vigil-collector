@@ -1,0 +1,61 @@
+workflows:
+  vigil_ios_release:
+    name: Vigil iOS TestFlight Build
+
+    max_build_duration: 30
+
+    environment:
+      flutter: stable
+
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.ardentis.vigilCollector
+
+      vars:
+        XCODE_WORKSPACE: "ios/Runner.xcworkspace"
+        XCODE_SCHEME: "Runner"
+
+    scripts:
+
+      - name: Flutter clean
+        script: |
+          flutter clean
+          flutter pub cache repair
+
+      - name: Install dependencies
+        script: |
+          flutter pub get
+
+      - name: Clean iOS pods
+        script: |
+          rm -rf ios/Pods
+          rm ios/Podfile.lock
+          cd ios
+          pod install
+          cd ..
+
+      - name: Build IPA
+        script: |
+          flutter build ipa --release \
+            --build-name=1.0.$BUILD_NUMBER \
+            --build-number=$BUILD_NUMBER
+
+    artifacts:
+      - build/ios/ipa/*.ipa
+
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
+
+    cache:
+      cache_paths:
+        - ~/.pub-cache
+        - ~/Library/Caches/CocoaPods
+
+    triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
