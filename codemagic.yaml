@@ -11,9 +11,6 @@ workflows:
 
       ios_signing:
         distribution_type: app_store
-        certificate_path: $CM_CERTIFICATE_PATH
-        certificate_passphrase: $CM_CERTIFICATE_PASSWORD
-        provisioning_profile_path: $CM_PROVISIONING_PROFILE_PATH
         bundle_identifier: com.ardentis.vigilCollector
 
       vars:
