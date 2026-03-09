@@ -1,4 +1,26 @@
+import '../data/sensor_packet.dart';
+import 'wearable_service.dart';
 import 'dart:async';
+
+class BleWearableService implements WearableService {
+  final _controller = StreamController<SensorPacket>.broadcast();
+
+  @override
+  String get deviceId => "debug_device";
+
+  @override
+  Stream<SensorPacket> get stream => _controller.stream;
+
+  @override
+  Future<void> connect() async {
+    // temporarily disabled
+  }
+
+  @override
+  Future<void> disconnect() async {}
+}
+
+/*import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import '../data/sensor_packet.dart';
@@ -129,4 +151,4 @@ class BleWearableService implements WearableService {
   Future<void> disconnect() async {
     await _device?.disconnect();
   }
-}
+}*/
