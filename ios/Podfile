@@ -1,0 +1,25 @@
+platform :ios, '12.0'
+
+# CocoaPods analytics
+ENV['COCOAPODS_DISABLE_STATS'] = 'true'
+
+project 'Runner', {
+  'Debug' => :debug,
+  'Profile' => :release,
+  'Release' => :release,
+}
+
+# Flutter Pod helper
+require File.expand_path(File.join('..', 'flutter', 'packages', 'flutter_tools', 'bin', 'podhelper'))
+
+# Prevent CocoaPods from building symlinks in Xcode 14+
+install! 'cocoapods', :disable_input_output_paths => true
+
+target 'Runner' do
+  use_frameworks!
+  use_modular_headers!
+
+  # Flutter pods
+  flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
+
+end
