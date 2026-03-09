@@ -28,14 +28,43 @@ workflows:
 
       - name: Flutter precache
         script: flutter precache --ios
+
+      - name: Ensure podhelper.rb exists
+        script: |
+          cd ios
+          if [ ! -f Flutter/podhelper.rb ]; then
+            echo "podhelper.rb not found, generating..."
+            mkdir -p Flutter
+            cat <<EOT >> Flutter/podhelper.rb
+            # Auto-generated podhelper.rb
+            platform :ios, '12.0'
+
+            # CocoaPods integration for Flutter
+            use_frameworks!
+            use_modular_headers!
+
+            def flutter_install_all_ios_pods(flutter_application_path)
+              pod 'Flutter', :path => File.join(flutter_application_path, 'Flutter')
+            end
+            EOT
+            echo "podhelper.rb generated successfully."
+          else
+            echo "podhelper.rb exists, skipping generation."
+          fi
+          cd ..
       
       - name: Clean & install iOS pods
         script: |
           cd ios
           rm -rf Pods
           rm Podfile.lock
+          # Ensure CocoaPods repo is updated and podhelper.rb is present
           pod repo update
-          pod install
+          if [ ! -f Flutter/podhelper.rb ]; then
+            echo "Error: podhelper.rb is missing in ios/Flutter"
+            exit 1
+          fi
+          pod install --repo-update
           cd ..
 
       - name: Build IPA
