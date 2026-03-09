@@ -17,14 +17,14 @@ workflows:
         XCODE_WORKSPACE: "ios/Runner.xcworkspace"
         XCODE_SCHEME: "Runner"
 
-      triggering:
+    triggering:
       events:
         - push
       branch_patterns:
         - pattern: main
           include: true
 
-      cache:
+    cache:
       cache_paths:
         - ~/.pub-cache
         - ~/Library/Caches/CocoaPods
