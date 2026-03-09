@@ -65,7 +65,7 @@ class BleWearableService implements WearableService {
       if (_isVigilWearable(r.device)) {
         await FlutterBluePlus.stopScan();
         _device = r.device;
-        await _device!.connect(autoConnect: false);
+        await _device!.connect(autoConnect: false, license: License.free);
         await _discoverServices();
         await _startStreaming();
         return;
