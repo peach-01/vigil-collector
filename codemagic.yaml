@@ -17,6 +17,19 @@ workflows:
         XCODE_WORKSPACE: "ios/Runner.xcworkspace"
         XCODE_SCHEME: "Runner"
 
+      triggering:
+      events:
+        - push
+      branch_patterns:
+        - pattern: main
+          include: true
+
+      cache:
+      cache_paths:
+        - ~/.pub-cache
+        - ~/Library/Caches/CocoaPods
+        - ~/Library/Developer/Xcode/DerivedData
+
     scripts:
       - name: Flutter clean
         script: |
@@ -37,6 +50,7 @@ workflows:
           rm -rf Pods
           rm Podfile.lock
           pod repo update
+          cd..
 
       - name: Install CocoaPods
         script: |
@@ -58,20 +72,9 @@ workflows:
 
     artifacts:
       - build/ios/ipa/*.ipa
+      - build/ios/archive/*.xcarchive
 
     publishing:
       app_store_connect:
         auth: integration
         submit_to_testflight: true
-
-    cache:
-      cache_paths:
-        - ~/.pub-cache
-        - ~/Library/Caches/CocoaPods
-
-    triggering:
-      events:
-        - push
-      branch_patterns:
-        - pattern: main
-          include: true
