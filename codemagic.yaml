@@ -1,8 +1,10 @@
 workflows:
   vigil_ios_release:
     name: Vigil iOS TestFlight Build
-
     max_build_duration: 30
+
+    integrations:
+      app_store_connect: Codemagic
 
     environment:
       flutter: stable
@@ -16,7 +18,6 @@ workflows:
         XCODE_SCHEME: "Runner"
 
     scripts:
-
       - name: Flutter clean
         script: |
           flutter clean
@@ -33,6 +34,9 @@ workflows:
           cd ios
           pod install
           cd ..
+
+      - name: Flutter precache
+        script: flutter precache --ios
 
       - name: Build IPA
         script: |
