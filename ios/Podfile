@@ -1,20 +1,13 @@
-# ios/Podfile
-platform :ios, '12.0'
+platform :ios, '13.0'
 
 # CocoaPods analytics
 ENV['COCOAPODS_DISABLE_STATS'] = 'true'
 
-install! 'cocoapods', :disable_input_output_paths => true
+require File.expand_path(File.join('..', 'Flutter', 'podhelper.rb'), __FILE__)
 
 target 'Runner' do
   use_frameworks!
   use_modular_headers!
 
-  # Flutter Pod helper
-  flutter_application_path = File.expand_path('..', __FILE__)
-  load File.join(flutter_application_path, '.flutter-plugins-dependencies', 'ios', 'flutter_plugins.rb') if File.exist?(File.join(flutter_application_path, '.flutter-plugins-dependencies', 'ios', 'flutter_plugins.rb'))
-
-  # This ensures Flutter pods are installed
-  eval(File.read(File.join(flutter_application_path, '.flutter-plugins-dependencies', 'ios', 'podhelper.rb')), binding) if File.exist?(File.join(flutter_application_path, '.flutter-plugins-dependencies', 'ios', 'podhelper.rb'))
-
+  flutter_install_all_ios_pods(File.dirname(File.realpath(__FILE__)))
 end

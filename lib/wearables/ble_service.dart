@@ -1,8 +1,8 @@
-/*import '../data/sensor_packet.dart';
+import '../data/sensor_packet.dart';
 import 'wearable_service.dart';
 import 'dart:async';
 
-class BleWearableService implements WearableService {
+/*class BleWearableService implements WearableService {
   final _controller = StreamController<SensorPacket>.broadcast();
 
   @override
