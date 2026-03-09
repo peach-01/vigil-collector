@@ -35,18 +35,18 @@ workflows:
           if [ ! -f Flutter/podhelper.rb ]; then
             echo "podhelper.rb not found, generating..."
             mkdir -p Flutter
-            cat <<EOT >> Flutter/podhelper.rb
-            # Auto-generated podhelper.rb
-            platform :ios, '12.0'
+            cat <<EOT > Flutter/podhelper.rb
+      # Auto-generated podhelper.rb
+      platform :ios, '12.0'
 
-            # CocoaPods integration for Flutter
-            use_frameworks!
-            use_modular_headers!
+      # CocoaPods integration for Flutter
+      use_frameworks!
+      use_modular_headers!
 
-            def flutter_install_all_ios_pods(flutter_application_path)
-              pod 'Flutter', :path => File.join(flutter_application_path, 'Flutter')
-            end
-            EOT
+      def flutter_install_all_ios_pods(flutter_application_path)
+        pod 'Flutter', :path => File.join(flutter_application_path, 'Flutter')
+      end
+      EOT
             echo "podhelper.rb generated successfully."
           else
             echo "podhelper.rb exists, skipping generation."
