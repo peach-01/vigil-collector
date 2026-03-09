@@ -24,19 +24,19 @@ workflows:
           flutter pub cache repair
 
       - name: Install dependencies
-        script: |
-          flutter pub get
+        script: flutter pub get
 
+      - name: Flutter precache
+        script: flutter precache --ios
+      
       - name: Clean iOS pods
         script: |
           rm -rf ios/Pods
           rm ios/Podfile.lock
           cd ios
+          pod repo update
           pod install
           cd ..
-
-      - name: Flutter precache
-        script: flutter precache --ios
 
       - name: Build IPA
         script: |
