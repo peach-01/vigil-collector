@@ -62,5 +62,8 @@
 
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string>This app uses location to discover nearby Bluetooth devices.</string>
+
+	<key>FirebaseAppDelegateProxyEnabled</key>
+	<false/>
 </dict>
 </plist>
