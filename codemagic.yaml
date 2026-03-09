@@ -29,11 +29,11 @@ workflows:
       - name: Flutter precache
         script: flutter precache --ios
       
-      - name: Clean iOS pods
+      - name: Clean & install iOS pods
         script: |
-          rm -rf ios/Pods
-          rm ios/Podfile.lock
           cd ios
+          rm -rf Pods
+          rm Podfile.lock
           pod repo update
           pod install
           cd ..
@@ -43,7 +43,6 @@ workflows:
           flutter build ipa \
             --release \
             --export-method=app-store \
-            --no-codesign \
             --build-name=1.0.$BUILD_NUMBER \
             --build-number=$BUILD_NUMBER
 
