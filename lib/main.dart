@@ -8,12 +8,19 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'auth/auth_gate.dart';
 import './firebase_options.dart';
 
-void main() async {
+/*void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  debugPrint("Flutter binding initialized");
 
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  try {
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    debugPrint("Firebase initialized successfully");
+  } catch (e, stack) {
+    debugPrint("Firebase initialization failed: $e");
+    debugPrint("$stack");
+  }
 
   // catch flutter framework errors
   FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
@@ -25,29 +32,39 @@ void main() async {
   };
 
   runZonedGuarded(() {
+    debugPrint("Running VigilCollectorApp");
     runApp(const VigilCollectorApp());
   }, (e, stack) {
     FirebaseCrashlytics.instance.recordError(e, stack, fatal: true);
   });
-}
+}*/
 
-/*void main() {
+void main() {
   runApp(
     const MaterialApp(
       home: Scaffold(body: Center(child: Text("TEST SCREEN"))),
     ),
   );
-}*/
+}
 
 class VigilCollectorApp extends StatelessWidget {
   const VigilCollectorApp({super.key});
+
+  /*@override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: 'VIGIL Collect',
+      theme: ThemeData.dark(),
+      home: const AuthGate(),
+    );
+  }*/
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'VIGIL Collect',
       theme: ThemeData.dark(),
-      home: const AuthGate(),
+      home: Scaffold(body: Center(child: Text("TEST SCREEN"))),
     );
   }
 }
