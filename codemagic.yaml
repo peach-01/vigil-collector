@@ -12,6 +12,7 @@ workflows:
       branch_patterns:
         - pattern: main
           include: true
+      cancel_previous_builds: true
 
     environment:
       flutter: stable
@@ -30,9 +31,8 @@ workflows:
         - ~/Library/Developer/Xcode/DerivedData
 
     scripts:
-      - name: Flutter clean
-        script: |
-          flutter clean
+      - name: Flutter version
+        script: flutter --version
 
       - name: Install dependencies
         script: |
