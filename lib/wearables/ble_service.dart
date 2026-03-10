@@ -37,7 +37,7 @@ class BleWearableService implements WearableService {
     }
 
     await FlutterBluePlus.startScan(timeout: const Duration(seconds: 10));
-    final results = await FlutterBluePlus.scanResults.first;
+    final results = await FlutterBluePlus.scanResults.firstWhere((r) => r.isNotEmpty);
 
     for (final r in results) {
       if (_isVigilWearable(r.device)) {

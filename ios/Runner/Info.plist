@@ -64,8 +64,5 @@
 
 	<key>NSCameraUsageDescription</key>
 	<string>This app needs camera access to scan codes.</string>
-
-	<key>FirebaseAppDelegateProxyEnabled</key>
-	<false/>
 </dict>
 </plist>
