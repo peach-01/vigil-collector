@@ -29,7 +29,7 @@ class VigilCollectorApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'VIGIL Collector',
+      title: 'VIGIL Collect',
       theme: ThemeData.dark(),
       home: const AuthGate(),
     );
