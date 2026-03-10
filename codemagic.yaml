@@ -28,19 +28,18 @@ workflows:
       cache_paths:
         - ~/.pub-cache
         - ~/Library/Caches/CocoaPods
-        - ~/Library/Developer/Xcode/DerivedData
 
     scripts:
       - name: Flutter version
         script: flutter --version
 
-      - name: Install dependencies
+      - name: Clean build
         script: |
+          flutter clean
           flutter pub get
 
       - name: Flutter precache
-        script: |
-          flutter precache --ios
+        script: flutter precache --ios
 
       - name: Install CocoaPods
         script: |
@@ -49,20 +48,15 @@ workflows:
           cd ..
 
       - name: Set up code signing
-        script: |
-          xcode-project use-profiles
-
-      - name: Export Mapping
-        script: |
-          flutter build ipa --export-options-plist=/Users/builder/export_options.plist
+        script: xcode-project use-profiles
 
       - name: Build IPA
         script: |
           flutter build ipa \
             --release \
-            --export-method=app-store \
             --build-name=1.0.$BUILD_NUMBER \
-            --build-number=$BUILD_NUMBER
+            --build-number=$BUILD_NUMBER \
+            --export-method=app-store
 
     artifacts:
       - build/ios/ipa/*.ipa

@@ -98,7 +98,7 @@ class _StartupTracerAppState extends State<StartupTracerApp> {
     return MaterialApp(
       title: "Startup Debug",
       home: Scaffold(
-        backgroundColor: Colors.black,
+        backgroundColor: Colors.red,
         body: Center(
           child: Text(
             step,
