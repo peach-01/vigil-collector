@@ -12,7 +12,9 @@ class AuthGate extends StatelessWidget {
             stream: FirebaseAuth.instance.authStateChanges(),
             builder: (context, snap) {
                 if (snap.connectionState == ConnectionState.waiting) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+                if (snap.hasError) return Scaffold(body: Center(child: Text("Auth error: ${snap.error}")));
                 if (!snap.hasData) return const LoginPage();
+                
                 return ConnectWearablePage(uid: snap.data!.uid);
             },
         );

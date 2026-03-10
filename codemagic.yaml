@@ -45,7 +45,7 @@ workflows:
       - name: Install CocoaPods
         script: |
           cd ios
-          pod install --repo-update
+          pod install --repo-update --verbose
           cd ..
 
       - name: Set up code signing

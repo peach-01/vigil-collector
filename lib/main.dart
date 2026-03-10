@@ -40,31 +40,89 @@ import './firebase_options.dart';
 }*/
 
 void main() {
-  runApp(
-    const MaterialApp(
-      home: Scaffold(body: Center(child: Text("TEST SCREEN"))),
-    ),
-  );
+  runApp(const StartupTracerApp());
+}
+
+class StartupTracerApp extends StatefulWidget {
+  const StartupTracerApp({super.key});
+
+  @override
+  State<StartupTracerApp> createState() => _StartupTracerAppState();
+}
+
+class _StartupTracerAppState extends State<StartupTracerApp> {
+  String step = "Starting app...";
+
+  @override
+  void initState() {
+    super.initState();
+    startBoot();
+  }
+
+  Future<void> startBoot() async {
+    try {
+      setStep("Step 1: Flutter engine started");
+      await Future.delayed(const Duration(seconds: 1));
+
+      setStep("Step 2: Initializing Firebase");
+      await Firebase.initializeApp(
+        options: DefaultFirebaseOptions.currentPlatform,
+      );
+
+      setStep("Step 3: Firebase initialized");
+      await Future.delayed(const Duration(seconds: 1));
+
+      setStep("Step 4: Launching main app");
+      await Future.delayed(const Duration(seconds: 1));
+
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => const VigilCollectorApp(),
+        ),
+      );
+    } catch (e, stack) {
+      setStep("ERROR during startup:\n$e");
+      debugPrintStack(stackTrace: stack);
+    }
+  }
+
+  void setStep(String newStep) {
+    debugPrint(newStep);
+    setState(() {
+      step = newStep;
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      title: "Startup Debug",
+      home: Scaffold(
+        backgroundColor: Colors.black,
+        body: Center(
+          child: Text(
+            step,
+            textAlign: TextAlign.center,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 20,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class VigilCollectorApp extends StatelessWidget {
   const VigilCollectorApp({super.key});
-
-  /*@override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'VIGIL Collect',
-      theme: ThemeData.dark(),
-      home: const AuthGate(),
-    );
-  }*/
 
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'VIGIL Collect',
       theme: ThemeData.dark(),
-      home: Scaffold(body: Center(child: Text("TEST SCREEN"))),
+      home: const AuthGate(),
     );
   }
 }
