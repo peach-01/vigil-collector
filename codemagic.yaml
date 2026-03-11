@@ -16,9 +16,10 @@ workflows:
 
     environment:
       flutter: stable
-      ios_signing: manual
-      distribution_type: app_store
-      bundle_identifier: com.ardentis.vigilCollector
+      ios_signing:
+        distribution_type: app_store
+        bundle_identifier: com.ardentis.vigilCollector
+        automatic_code_signing: false
 
       vars:
         BUNDLE_ID: com.ardentis.vigilCollector
