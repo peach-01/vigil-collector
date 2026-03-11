@@ -19,7 +19,6 @@ workflows:
       ios_signing:
         distribution_type: app_store
         bundle_identifier: com.ardentis.vigilCollector
-        automatic_code_signing: false
 
       vars:
         BUNDLE_ID: com.ardentis.vigilCollector
