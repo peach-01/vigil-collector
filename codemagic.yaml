@@ -115,13 +115,22 @@ workflows:
       # COCOAPODS INSTALL
       # ------------------------------------------------
 
+      - name: Clean CocoaPods
+        script: |
+          echo "BOOT_TRACE: Cleaning pods"
+          cd ios
+          rm -rf Pods
+          rm -rf Podfile.lock
+          pod cache clean --all
+          cd ..
+
       - name: Install CocoaPods
         script: |
           echo "=============================="
           echo "BOOT_TRACE: COCOAPODS INSTALL"
           echo "=============================="
           cd ios
-          pod install --repo-update --verbose
+          pod install --repo-update --clean-install
           cd ..
 
       - name: Boot Trace — Pods
