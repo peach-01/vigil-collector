@@ -16,13 +16,15 @@ workflows:
 
     environment:
       flutter: stable
-
-      ios_signing:
-        distribution_type: app_store
-        bundle_identifier: com.ardentis.vigilCollector
+      ios_signing: manual
+      distribution_type: app_store
+      bundle_identifier: com.ardentis.vigilCollector
 
       vars:
         BUNDLE_ID: com.ardentis.vigilCollector
+        CODE_SIGN_IDENTITY: "iPhone Distribution: Cooper Peach (Z9B58AX4CV)"
+        PROVISIONING_PROFILE_UUID: "<c7b6b595-f42e-4967-9097-394a0ffd327c>"
+        APP_TEAM_ID: "<Z9B58AX4CV>"
 
     cache:
       cache_paths:
@@ -34,7 +36,6 @@ workflows:
       # ------------------------------------------------
       # ENVIRONMENT DIAGNOSTICS
       # ------------------------------------------------
-
       - name: Boot Trace — Environment
         script: |
           echo "=============================="
@@ -50,7 +51,6 @@ workflows:
       # ------------------------------------------------
       # PROJECT STRUCTURE
       # ------------------------------------------------
-
       - name: Boot Trace — Project Structure
         script: |
           echo "=============================="
@@ -63,7 +63,6 @@ workflows:
       # ------------------------------------------------
       # CLEAN + DEPENDENCIES
       # ------------------------------------------------
-
       - name: Clean Flutter
         script: |
           echo "BOOT_TRACE: flutter clean"
@@ -82,7 +81,6 @@ workflows:
       # ------------------------------------------------
       # FIREBASE CHECK
       # ------------------------------------------------
-
       - name: Boot Trace — Firebase Config
         script: |
           echo "=============================="
@@ -99,7 +97,6 @@ workflows:
       # ------------------------------------------------
       # FLUTTER CONFIG FILES
       # ------------------------------------------------
-
       - name: Boot Trace — Flutter iOS Config
         script: |
           echo "=============================="
@@ -114,7 +111,6 @@ workflows:
       # ------------------------------------------------
       # COCOAPODS INSTALL
       # ------------------------------------------------
-
       - name: Clean CocoaPods
         script: |
           echo "BOOT_TRACE: Cleaning pods"
@@ -144,7 +140,6 @@ workflows:
       # ------------------------------------------------
       # CODE SIGNING
       # ------------------------------------------------
-
       - name: Setup Code Signing
         script: |
           echo "BOOT_TRACE: Code signing profiles"
@@ -153,7 +148,6 @@ workflows:
       # ------------------------------------------------
       # BUILD IPA
       # ------------------------------------------------
-
       - name: Build IPA (Verbose)
         script: |
           echo "=============================="
@@ -167,9 +161,22 @@ workflows:
             -v
 
       # ------------------------------------------------
+      # CODE SIGN EMBEDDED FRAMEWORKS
+      # ------------------------------------------------
+      - name: Code-sign Embedded Frameworks
+        script: |
+          echo "=============================="
+          echo "BOOT_TRACE: SIGNING EMBEDDED FRAMEWORKS"
+          echo "=============================="
+          APP_PATH="build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app"
+          find "$APP_PATH/Frameworks" -name "*.framework" -type d | while read -r framework; do
+            echo "Signing $framework"
+            codesign --force --verify --verbose --sign "$CODE_SIGN_IDENTITY" "$framework"
+          done
+
+      # ------------------------------------------------
       # ARCHIVE INSPECTION
       # ------------------------------------------------
-
       - name: Boot Trace — Archive Structure
         script: |
           echo "=============================="
@@ -180,13 +187,12 @@ workflows:
       # ------------------------------------------------
       # IPA INSPECTION
       # ------------------------------------------------
-
       - name: Boot Trace — IPA Contents
         script: |
           echo "=============================="
           echo "BOOT_TRACE: IPA CONTENTS"
           echo "=============================="
-          unzip -l build/ios/ipa/*.ipa | head -200
+          unzip -l build/ios/ipa/*.ipa | head -200 || true
 
       - name: Boot Trace — Flutter Engine Check
         script: |
@@ -200,13 +206,12 @@ workflows:
       # ------------------------------------------------
       # EXPORT IPA
       # ------------------------------------------------
-
       - name: Export IPA
         script: |
           echo "BOOT_TRACE: Exporting IPA"
           xcodebuild -exportArchive \
             -archivePath build/ios/archive/Runner.xcarchive \
-            -exportOptionsPlist /Users/builder/export_options.plist \
+            -exportOptionsPlist ios/ExportOptions.plist \
             -exportPath build/ios/ipa
 
     artifacts:
