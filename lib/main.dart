@@ -39,9 +39,39 @@ import './firebase_options.dart';
   });
 }*/
 
-void main() {
+void bootLog(String message) {
+  debugPrint("BOOT_TRACE: $message");
+  FirebaseCrashlytics.instance.log("BOOT_TRACE: $message");
+}
+
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const StartupTracerApp());
+  bootLog("Flutter binding initialized");
+
+  await runZonedGuarded(() async {
+
+    bootLog("Initializing Firebase");
+    await Firebase.initializeApp(
+      options: DefaultFirebaseOptions.currentPlatform,
+    );
+    bootLog("Firebase initialized");
+
+    FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+    PlatformDispatcher.instance.onError = (error, stack) {
+      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+      return true;
+    };
+
+    FirebaseCrashlytics.instance.log("FLUTTER_BOOT: runApp starting");
+
+    runApp(const StartupTracerApp());
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      bootLog("First Flutter frame rendered");
+    });
+
+  }, (error, stack) {
+    FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
+  });
 }
 
 class StartupTracerApp extends StatefulWidget {
@@ -92,6 +122,8 @@ class _StartupTracerAppState extends State<StartupTracerApp> {
 
   void setStep(String newStep) {
     debugPrint(newStep);
+    FirebaseCrashlytics.instance.log(newStep);
+
     setState(() {
       step = newStep;
     });
@@ -123,10 +155,15 @@ class VigilCollectorApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    bootLog("MaterialApp build started");
     return MaterialApp(
       title: 'VIGIL Collect',
       theme: ThemeData.dark(),
       home: const AuthGate(),
+      build: (context, child) {
+        bootLog("First frame builder executed");
+        return child!;
+      },
     );
   }
 }

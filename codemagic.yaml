@@ -30,39 +30,171 @@ workflows:
         - ~/Library/Caches/CocoaPods
 
     scripts:
-      - name: Flutter version
-        script: flutter --version
 
-      - name: Clean build
+      # ------------------------------------------------
+      # ENVIRONMENT DIAGNOSTICS
+      # ------------------------------------------------
+
+      - name: Boot Trace — Environment
         script: |
+          echo "=============================="
+          echo "BOOT_TRACE: ENVIRONMENT"
+          echo "=============================="
+          flutter --version
+          dart --version
+          xcodebuild -version
+          sw_vers
+          pwd
+          env | sort
+
+      # ------------------------------------------------
+      # PROJECT STRUCTURE
+      # ------------------------------------------------
+
+      - name: Boot Trace — Project Structure
+        script: |
+          echo "=============================="
+          echo "BOOT_TRACE: PROJECT STRUCTURE"
+          echo "=============================="
+          ls -la
+          ls -la ios
+          ls -la ios/Runner
+
+      # ------------------------------------------------
+      # CLEAN + DEPENDENCIES
+      # ------------------------------------------------
+
+      - name: Clean Flutter
+        script: |
+          echo "BOOT_TRACE: flutter clean"
           flutter clean
+
+      - name: Install Flutter Dependencies
+        script: |
+          echo "BOOT_TRACE: flutter pub get"
           flutter pub get
 
-      - name: Flutter precache
-        script: flutter precache --ios
+      - name: Flutter Precache iOS
+        script: |
+          echo "BOOT_TRACE: flutter precache"
+          flutter precache --ios
+
+      # ------------------------------------------------
+      # FIREBASE CHECK
+      # ------------------------------------------------
+
+      - name: Boot Trace — Firebase Config
+        script: |
+          echo "=============================="
+          echo "BOOT_TRACE: FIREBASE FILES"
+          echo "=============================="
+          ls -la ios/Runner
+          if [ -f ios/Runner/GoogleService-Info.plist ]; then
+            echo "BOOT_TRACE: GoogleService-Info.plist FOUND"
+            cat ios/Runner/GoogleService-Info.plist | head -20
+          else
+            echo "BOOT_TRACE ERROR: GoogleService-Info.plist MISSING"
+          fi
+
+      # ------------------------------------------------
+      # FLUTTER CONFIG FILES
+      # ------------------------------------------------
+
+      - name: Boot Trace — Flutter iOS Config
+        script: |
+          echo "=============================="
+          echo "BOOT_TRACE: FLUTTER CONFIG"
+          echo "=============================="
+          ls -la ios/Flutter
+          if [ -f ios/Flutter/Generated.xcconfig ]; then
+            echo "BOOT_TRACE: Generated.xcconfig"
+            cat ios/Flutter/Generated.xcconfig
+          fi
+
+      # ------------------------------------------------
+      # COCOAPODS INSTALL
+      # ------------------------------------------------
 
       - name: Install CocoaPods
         script: |
+          echo "=============================="
+          echo "BOOT_TRACE: COCOAPODS INSTALL"
+          echo "=============================="
           cd ios
           pod install --repo-update --verbose
           cd ..
 
-      - name: Disable analytics
-        script: flutter config --no-analytics
-
-      - name: Set up code signing
-        script: xcode-project use-profiles
-
-      - name: Build IPA
+      - name: Boot Trace — Pods
         script: |
+          echo "=============================="
+          echo "BOOT_TRACE: POD STRUCTURE"
+          echo "=============================="
+          ls -la ios/Pods
+          ls -la ios/Pods/Target\ Support\ Files || true
+
+      # ------------------------------------------------
+      # CODE SIGNING
+      # ------------------------------------------------
+
+      - name: Setup Code Signing
+        script: |
+          echo "BOOT_TRACE: Code signing profiles"
+          xcode-project use-profiles
+
+      # ------------------------------------------------
+      # BUILD IPA
+      # ------------------------------------------------
+
+      - name: Build IPA (Verbose)
+        script: |
+          echo "=============================="
+          echo "BOOT_TRACE: FLUTTER BUILD IPA"
+          echo "=============================="
+
           flutter build ipa \
             --release \
             --build-name=1.0.$BUILD_NUMBER \
             --build-number=$BUILD_NUMBER \
-            --no-codesign
+            -v
+
+      # ------------------------------------------------
+      # ARCHIVE INSPECTION
+      # ------------------------------------------------
+
+      - name: Boot Trace — Archive Structure
+        script: |
+          echo "=============================="
+          echo "BOOT_TRACE: ARCHIVE CONTENTS"
+          echo "=============================="
+          ls -R build/ios/archive || true
+
+      # ------------------------------------------------
+      # IPA INSPECTION
+      # ------------------------------------------------
+
+      - name: Boot Trace — IPA Contents
+        script: |
+          echo "=============================="
+          echo "BOOT_TRACE: IPA CONTENTS"
+          echo "=============================="
+          unzip -l build/ios/ipa/*.ipa | head -200
+
+      - name: Boot Trace — Flutter Engine Check
+        script: |
+          echo "=============================="
+          echo "BOOT_TRACE: FLUTTER ENGINE"
+          echo "=============================="
+          unzip -l build/ios/ipa/*.ipa | grep Flutter || true
+          unzip -l build/ios/ipa/*.ipa | grep App.framework || true
+          unzip -l build/ios/ipa/*.ipa | grep flutter_assets || true
+
+      # ------------------------------------------------
+      # EXPORT IPA
+      # ------------------------------------------------
 
       - name: Export IPA
         script: |
+          echo "BOOT_TRACE: Exporting IPA"
           xcodebuild -exportArchive \
             -archivePath build/ios/archive/Runner.xcarchive \
             -exportOptionsPlist /Users/builder/export_options.plist \
