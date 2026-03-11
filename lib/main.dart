@@ -160,7 +160,7 @@ class VigilCollectorApp extends StatelessWidget {
       title: 'VIGIL Collect',
       theme: ThemeData.dark(),
       home: const AuthGate(),
-      build: (context, child) {
+      builder: (context, child) {
         bootLog("First frame builder executed");
         return child!;
       },
