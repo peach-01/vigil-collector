@@ -47,6 +47,9 @@ workflows:
           pod install --repo-update --verbose
           cd ..
 
+      - name: Disable analytics
+        script: flutter config --no-analytics
+
       - name: Set up code signing
         script: xcode-project use-profiles
 
