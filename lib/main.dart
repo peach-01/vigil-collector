@@ -40,6 +40,7 @@ import './firebase_options.dart';
 }*/
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
   runApp(const StartupTracerApp());
 }
 
@@ -75,11 +76,14 @@ class _StartupTracerAppState extends State<StartupTracerApp> {
       setStep("Step 4: Launching main app");
       await Future.delayed(const Duration(seconds: 1));
 
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(
-          builder: (_) => const VigilCollectorApp(),
-        ),
-      );
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => const VigilCollectorApp(),
+          ),
+        );
+      });
+      
     } catch (e, stack) {
       setStep("ERROR during startup:\n$e");
       debugPrintStack(stackTrace: stack);
