@@ -37,15 +37,5 @@ post_install do |installer|
     target.build_configurations.each do |config|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
     end
-    
-    # --- Begin GoogleService-Info.plist auto-copy ---
-    resources_phase = target.build_phases.find { |bp| bp.isa == 'PBXResourcesBuildPhase' }
-    if resources_phase
-      plist_path = File.join('Runner', 'GoogleService-Info.plist')
-      plist_file_ref = target.project.new_file(plist_path)
-      unless resources_phase.files.find { |f| f.file_ref == plist_file_ref }
-        resources_phase.add_file_reference(plist_file_ref)
-      end
-    end
   end
 end

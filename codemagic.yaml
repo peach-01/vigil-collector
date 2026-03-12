@@ -29,34 +29,6 @@ workflows:
         - ~/Library/Caches/CocoaPods
 
     scripts:
-
-      # ------------------------------------------------
-      # ENVIRONMENT DIAGNOSTICS
-      # ------------------------------------------------
-      #- name: Boot Trace — Environment
-        #script: |
-          #echo "=============================="
-          #echo "BOOT_TRACE: ENVIRONMENT"
-          #echo "=============================="
-          #flutter --version
-          #dart --version
-          #xcodebuild -version
-          #sw_vers
-          #pwd
-          #env | sort
-
-      # ------------------------------------------------
-      # PROJECT STRUCTURE
-      # ------------------------------------------------
-      #- name: Boot Trace — Project Structure
-        #script: |
-          #echo "=============================="
-          #echo "BOOT_TRACE: PROJECT STRUCTURE"
-          #echo "=============================="
-          #ls -la
-          #ls -la ios
-          #ls -la ios/Runner
-
       # ------------------------------------------------
       # CODE SIGNING
       # ------------------------------------------------
@@ -84,46 +56,16 @@ workflows:
           #flutter precache --ios
 
       # ------------------------------------------------
-      # FIREBASE CHECK
-      # ------------------------------------------------
-      #- name: Boot Trace — Firebase Config
-        #: |
-          #echo "=============================="
-          #echo "BOOT_TRACE: FIREBASE FILES"
-          #echo "=============================="
-          #ls -la ios/Runner
-          #if [ -f ios/Runner/GoogleService-Info.plist ]; then
-            #echo "BOOT_TRACE: GoogleService-Info.plist FOUND"
-            #cat ios/Runner/GoogleService-Info.plist | head -20
-          #else
-            #echo "BOOT_TRACE ERROR: GoogleService-Info.plist MISSING"
-          #fi
-
-      # ------------------------------------------------
-      # FLUTTER CONFIG FILES
-      # ------------------------------------------------
-      #- name: Boot Trace — Flutter iOS Config
-        #script: |
-          #echo "=============================="
-          #echo "BOOT_TRACE: FLUTTER CONFIG"
-          #echo "=============================="
-          #ls -la ios/Flutter
-          #if [ -f ios/Flutter/Generated.xcconfig ]; then
-            #echo "BOOT_TRACE: Generated.xcconfig"
-            #cat ios/Flutter/Generated.xcconfig
-          #fi
-
-      # ------------------------------------------------
       # COCOAPODS INSTALL
       # ------------------------------------------------
       - name: Clean CocoaPods
         script: |
           echo "BOOT_TRACE: Cleaning pods"
-          cd ios
-          rm -rf Pods
-          rm -rf Podfile.lock
-          pod cache clean --all
-          cd ..
+          rm -rf ios/Pods
+          rm -rf ios/.symlinks
+          rm -rf ios/Flutter/Flutter.framework
+          rm -rf ios/Flutter/Flutter.podspec
+          rm -rf ios/Podfile.lock
 
       #- name: Install CocoaPods
         script: |
@@ -154,6 +96,11 @@ workflows:
             echo "BOOT_TRACE ERROR: GoogleService-Info.plist MISSING"
             exit 1
           fi
+
+      - name: Ensure Firebase plist in build
+        script: |
+          echo "BOOT_TRACE: Copy Firebase plist"
+          cp ios/Runner/GoogleService-Info.plist ios/GoogleService-Info.plist
 
       # ------------------------------------------------
       # BUILD iOS ARCHIVE
