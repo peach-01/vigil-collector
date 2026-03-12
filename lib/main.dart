@@ -25,8 +25,8 @@ Future<void> main() async {
       return true;
     };
     
-    runApp(const StartupTracerApp());
-    
+    runApp(const VigilCollectorApp());
+
   }, (error, stack) {
     FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
   });
