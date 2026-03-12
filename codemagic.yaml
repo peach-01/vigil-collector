@@ -58,6 +58,14 @@ workflows:
           #ls -la ios/Runner
 
       # ------------------------------------------------
+      # CODE SIGNING
+      # ------------------------------------------------
+      - name: Setup Code Signing
+        script: |
+          echo "BOOT_TRACE: Code signing profiles"
+          xcode-project use-profiles
+
+      # ------------------------------------------------
       # CLEAN + DEPENDENCIES
       # ------------------------------------------------
       - name: Clean Flutter
@@ -133,14 +141,6 @@ workflows:
           #echo "=============================="
           #ls -la ios/Pods
           #ls -la ios/Pods/Target\ Support\ Files || true
-
-      # ------------------------------------------------
-      # CODE SIGNING
-      # ------------------------------------------------
-      #- name: Setup Code Signing
-        #script: |
-          #echo "BOOT_TRACE: Code signing profiles"
-          #xcode-project use-profiles
 
       # ------------------------------------------------
       # BUILD IPA
