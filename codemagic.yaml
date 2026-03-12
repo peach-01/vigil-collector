@@ -143,18 +143,28 @@ workflows:
           #ls -la ios/Pods/Target\ Support\ Files || true
 
       # ------------------------------------------------
-      # BUILD IPA
+      # BUILD iOS ARCHIVE
       # ------------------------------------------------
-      - name: Build IPA (Verbose)
+      - name: Build iOS Archive
         script: |
           echo "=============================="
-          echo "BOOT_TRACE: FLUTTER BUILD IPA"
+          echo "BOOT_TRACE: FLUTTER BUILD iOS"
           echo "=============================="
 
-          flutter build ipa \
+          flutter build ios \
             --release \
+            --no-codesign \
             --build-name=1.0.$BUILD_NUMBER \
             --build-number=$BUILD_NUMBER
+
+      # ------------------------------------------------
+      # EXPORT IPA
+      # ------------------------------------------------
+      - name: Export IPA
+        script: |
+          xcode-project build-ipa \
+            --workspace ios/Runner.xcworkspace \
+            --scheme Runner
 
       # ------------------------------------------------
       # ARCHIVE INSPECTION
