@@ -36,8 +36,17 @@ post_install do |installer|
   installer.pods_project.targets.each do |target|
     flutter_additional_ios_build_settings(target)
     target.build_configurations.each do |config|
-      # Force modern iOS deployment
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
     end
+    # --- Begin GoogleService-Info.plist auto-copy ---
+    resources_phase = target.build_phases.find { |bp| bp.isa == 'PBXResourcesBuildPhase' }
+    if resources_phase
+      plist_file_ref = installer.pods_project.main_group.files.find { |f| f.path == 'Runner/GoogleService-Info.plist' }
+      unless plist_file_ref
+        plist_file_ref = installer.pods_project.main_group.new_file('Runner/GoogleService-Info.plist')
+        resources_phase.add_file_reference(plist_file_ref)
+      end
+    end
+    # --- End GoogleService-Info.plist auto-copy ---
   end
 end
