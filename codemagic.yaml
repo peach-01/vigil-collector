@@ -153,15 +153,21 @@ workflows:
 
           flutter build ios \
             --release \
-            --no-codesign \
             --build-name=1.0.$BUILD_NUMBER \
             --build-number=$BUILD_NUMBER
+
+      # Verify plist exists
+      - name: Verify GoogleService-Info.plist
+        script: |
+          echo "BOOT_TRACE: Checking GoogleService-Info.plist"
+          ls -la ios/Runner/GoogleService-Info.plist
 
       # ------------------------------------------------
       # EXPORT IPA
       # ------------------------------------------------
       - name: Export IPA
         script: |
+          echo "BOOT_TRACE: Building IPA"
           xcode-project build-ipa \
             --workspace ios/Runner.xcworkspace \
             --scheme Runner
@@ -179,12 +185,12 @@ workflows:
       # ------------------------------------------------
       # IPA INSPECTION
       # ------------------------------------------------
-      #- name: Boot Trace — IPA Contents
-        #script: |
-          # "=============================="
-          #echo "BOOT_TRACE: IPA CONTENTS"
-          #echo "=============================="
-          #unzip -l build/ios/ipa/*.ipa | head -200 || true
+      - name: Boot Trace — IPA Contents
+        script: |
+          "=============================="
+          echo "BOOT_TRACE: IPA CONTENTS"
+          echo "=============================="
+          unzip -l build/ios/ipa/*.ipa | head -200 || true
 
       #- name: Boot Trace — Flutter Engine Check
         #script: |
