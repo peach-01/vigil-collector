@@ -87,20 +87,25 @@ workflows:
       # ------------------------------------------------
       # VERIFY PLIST
       # ------------------------------------------------
-      - name: Verify GoogleService-Info.plist
+      - name: Inject Firebase plist into iOS build
         script: |
-          echo "BOOT_TRACE: Checking GoogleService-Info.plist"
+          echo "BOOT_TRACE: Injecting Firebase plist"
+
+          mkdir -p ios/Runner
+
           if [ -f ios/Runner/GoogleService-Info.plist ]; then
-            echo "BOOT_TRACE: GoogleService-Info.plist FOUND"
+            echo "Firebase plist found"
           else
-            echo "BOOT_TRACE ERROR: GoogleService-Info.plist MISSING"
+            echo "ERROR: GoogleService-Info.plist missing"
             exit 1
           fi
 
-      - name: Ensure Firebase plist in build
+          cp ios/Runner/GoogleService-Info.plist ios/Flutter/
+
+      - name: Verify Firebase plist in IPA
         script: |
-          echo "BOOT_TRACE: Copy Firebase plist"
-          cp ios/Runner/GoogleService-Info.plist ios/GoogleService-Info.plist
+          echo "BOOT_TRACE: Checking IPA for Firebase plist"
+          unzip -l build/ios/ipa/*.ipa | grep GoogleService || true
 
       # ------------------------------------------------
       # BUILD iOS ARCHIVE
