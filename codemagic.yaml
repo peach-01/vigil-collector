@@ -20,11 +20,8 @@ workflows:
         distribution_type: app_store
         bundle_identifier: com.ardentis.vigilCollector
 
-      vars:
-        BUNDLE_ID: com.ardentis.vigilCollector
-        CODE_SIGN_IDENTITY: "iPhone Distribution: Cooper Peach (Z9B58AX4CV)"
-        PROVISIONING_PROFILE_UUID: "<c7b6b595-f42e-4967-9097-394a0ffd327c>"
-        APP_TEAM_ID: "<Z9B58AX4CV>"
+      #vars:
+        #BUNDLE_ID: com.ardentis.vigilCollector
 
     cache:
       cache_paths:
@@ -36,29 +33,29 @@ workflows:
       # ------------------------------------------------
       # ENVIRONMENT DIAGNOSTICS
       # ------------------------------------------------
-      - name: Boot Trace — Environment
-        script: |
-          echo "=============================="
-          echo "BOOT_TRACE: ENVIRONMENT"
-          echo "=============================="
-          flutter --version
-          dart --version
-          xcodebuild -version
-          sw_vers
-          pwd
-          env | sort
+      #- name: Boot Trace — Environment
+        #script: |
+          #echo "=============================="
+          #echo "BOOT_TRACE: ENVIRONMENT"
+          #echo "=============================="
+          #flutter --version
+          #dart --version
+          #xcodebuild -version
+          #sw_vers
+          #pwd
+          #env | sort
 
       # ------------------------------------------------
       # PROJECT STRUCTURE
       # ------------------------------------------------
-      - name: Boot Trace — Project Structure
-        script: |
-          echo "=============================="
-          echo "BOOT_TRACE: PROJECT STRUCTURE"
-          echo "=============================="
-          ls -la
-          ls -la ios
-          ls -la ios/Runner
+      #- name: Boot Trace — Project Structure
+        #script: |
+          #echo "=============================="
+          #echo "BOOT_TRACE: PROJECT STRUCTURE"
+          #echo "=============================="
+          #ls -la
+          #ls -la ios
+          #ls -la ios/Runner
 
       # ------------------------------------------------
       # CLEAN + DEPENDENCIES
@@ -73,77 +70,77 @@ workflows:
           echo "BOOT_TRACE: flutter pub get"
           flutter pub get
 
-      - name: Flutter Precache iOS
-        script: |
-          echo "BOOT_TRACE: flutter precache"
-          flutter precache --ios
+      #- name: Flutter Precache iOS
+        #script: |
+          #echo "BOOT_TRACE: flutter precache"
+          #flutter precache --ios
 
       # ------------------------------------------------
       # FIREBASE CHECK
       # ------------------------------------------------
-      - name: Boot Trace — Firebase Config
-        script: |
-          echo "=============================="
-          echo "BOOT_TRACE: FIREBASE FILES"
-          echo "=============================="
-          ls -la ios/Runner
-          if [ -f ios/Runner/GoogleService-Info.plist ]; then
-            echo "BOOT_TRACE: GoogleService-Info.plist FOUND"
-            cat ios/Runner/GoogleService-Info.plist | head -20
-          else
-            echo "BOOT_TRACE ERROR: GoogleService-Info.plist MISSING"
-          fi
+      #- name: Boot Trace — Firebase Config
+        #: |
+          #echo "=============================="
+          #echo "BOOT_TRACE: FIREBASE FILES"
+          #echo "=============================="
+          #ls -la ios/Runner
+          #if [ -f ios/Runner/GoogleService-Info.plist ]; then
+            #echo "BOOT_TRACE: GoogleService-Info.plist FOUND"
+            #cat ios/Runner/GoogleService-Info.plist | head -20
+          #else
+            #echo "BOOT_TRACE ERROR: GoogleService-Info.plist MISSING"
+          #fi
 
       # ------------------------------------------------
       # FLUTTER CONFIG FILES
       # ------------------------------------------------
-      - name: Boot Trace — Flutter iOS Config
-        script: |
-          echo "=============================="
-          echo "BOOT_TRACE: FLUTTER CONFIG"
-          echo "=============================="
-          ls -la ios/Flutter
-          if [ -f ios/Flutter/Generated.xcconfig ]; then
-            echo "BOOT_TRACE: Generated.xcconfig"
-            cat ios/Flutter/Generated.xcconfig
-          fi
+      #- name: Boot Trace — Flutter iOS Config
+        #script: |
+          #echo "=============================="
+          #echo "BOOT_TRACE: FLUTTER CONFIG"
+          #echo "=============================="
+          #ls -la ios/Flutter
+          #if [ -f ios/Flutter/Generated.xcconfig ]; then
+            #echo "BOOT_TRACE: Generated.xcconfig"
+            #cat ios/Flutter/Generated.xcconfig
+          #fi
 
       # ------------------------------------------------
       # COCOAPODS INSTALL
       # ------------------------------------------------
-      - name: Clean CocoaPods
-        script: |
-          echo "BOOT_TRACE: Cleaning pods"
-          cd ios
-          rm -rf Pods
-          rm -rf Podfile.lock
-          pod cache clean --all
-          cd ..
+      #- name: Clean CocoaPods
+        #script: |
+          #echo "BOOT_TRACE: Cleaning pods"
+          #cd ios
+          #rm -rf Pods
+          #rm -rf Podfile.lock
+          #pod cache clean --all
+          #cd ..
 
-      - name: Install CocoaPods
-        script: |
-          echo "=============================="
-          echo "BOOT_TRACE: COCOAPODS INSTALL"
-          echo "=============================="
-          cd ios
-          pod install --repo-update --clean-install
-          cd ..
+      #- name: Install CocoaPods
+        #script: |
+          #echo "=============================="
+          #echo "BOOT_TRACE: COCOAPODS INSTALL"
+          #echo "=============================="
+          #cd ios
+          #pod install --repo-update --clean-install
+          #cd ..
 
-      - name: Boot Trace — Pods
-        script: |
-          echo "=============================="
-          echo "BOOT_TRACE: POD STRUCTURE"
-          echo "=============================="
-          ls -la ios/Pods
-          ls -la ios/Pods/Target\ Support\ Files || true
+      #- name: Boot Trace — Pods
+        #script: |
+          #echo "=============================="
+          #echo "BOOT_TRACE: POD STRUCTURE"
+          #echo "=============================="
+          #ls -la ios/Pods
+          #ls -la ios/Pods/Target\ Support\ Files || true
 
       # ------------------------------------------------
       # CODE SIGNING
       # ------------------------------------------------
-      - name: Setup Code Signing
-        script: |
-          echo "BOOT_TRACE: Code signing profiles"
-          xcode-project use-profiles
+      #- name: Setup Code Signing
+        #script: |
+          #echo "BOOT_TRACE: Code signing profiles"
+          #xcode-project use-profiles
 
       # ------------------------------------------------
       # BUILD IPA
@@ -157,66 +154,40 @@ workflows:
           flutter build ipa \
             --release \
             --build-name=1.0.$BUILD_NUMBER \
-            --build-number=$BUILD_NUMBER \
-            -v
-
-      # ------------------------------------------------
-      # CODE SIGN EMBEDDED FRAMEWORKS
-      # ------------------------------------------------
-      - name: Code-sign Embedded Frameworks
-        script: |
-          echo "=============================="
-          echo "BOOT_TRACE: SIGNING EMBEDDED FRAMEWORKS"
-          echo "=============================="
-          APP_PATH="build/ios/archive/Runner.xcarchive/Products/Applications/Runner.app"
-          find "$APP_PATH/Frameworks" -name "*.framework" -type d | while read -r framework; do
-            echo "Signing $framework"
-            codesign --force --verify --verbose --sign "$CODE_SIGN_IDENTITY" "$framework"
-          done
+            --build-number=$BUILD_NUMBER
 
       # ------------------------------------------------
       # ARCHIVE INSPECTION
       # ------------------------------------------------
-      - name: Boot Trace — Archive Structure
-        script: |
-          echo "=============================="
-          echo "BOOT_TRACE: ARCHIVE CONTENTS"
-          echo "=============================="
-          ls -R build/ios/archive || true
+      #- name: Boot Trace — Archive Structure
+        #script: |
+          #echo "=============================="
+          #echo "BOOT_TRACE: ARCHIVE CONTENTS"
+          #echo "=============================="
+          #ls -R build/ios/archive || true
 
       # ------------------------------------------------
       # IPA INSPECTION
       # ------------------------------------------------
-      - name: Boot Trace — IPA Contents
-        script: |
-          echo "=============================="
-          echo "BOOT_TRACE: IPA CONTENTS"
-          echo "=============================="
-          unzip -l build/ios/ipa/*.ipa | head -200 || true
+      #- name: Boot Trace — IPA Contents
+        #script: |
+          # "=============================="
+          #echo "BOOT_TRACE: IPA CONTENTS"
+          #echo "=============================="
+          #unzip -l build/ios/ipa/*.ipa | head -200 || true
 
-      - name: Boot Trace — Flutter Engine Check
-        script: |
-          echo "=============================="
-          echo "BOOT_TRACE: FLUTTER ENGINE"
-          echo "=============================="
-          unzip -l build/ios/ipa/*.ipa | grep Flutter || true
-          unzip -l build/ios/ipa/*.ipa | grep App.framework || true
-          unzip -l build/ios/ipa/*.ipa | grep flutter_assets || true
-
-      # ------------------------------------------------
-      # EXPORT IPA
-      # ------------------------------------------------
-      - name: Export IPA
-        script: |
-          echo "BOOT_TRACE: Exporting IPA"
-          xcodebuild -exportArchive \
-            -archivePath build/ios/archive/Runner.xcarchive \
-            -exportOptionsPlist ios/ExportOptions.plist \
-            -exportPath build/ios/ipa
+      #- name: Boot Trace — Flutter Engine Check
+        #script: |
+          #echo "=============================="
+          #echo "BOOT_TRACE: FLUTTER ENGINE"
+          #echo "=============================="
+          #unzip -l build/ios/ipa/*.ipa | grep Flutter || true
+          #unzip -l build/ios/ipa/*.ipa | grep App.framework || true
+          #unzip -l build/ios/ipa/*.ipa | grep flutter_assets || true
 
     artifacts:
       - build/ios/ipa/*.ipa
-      - build/ios/archive/*.xcarchive
+      #- build/ios/archive/*.xcarchive
 
     publishing:
       app_store_connect:
