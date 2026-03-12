@@ -116,23 +116,23 @@ workflows:
       # ------------------------------------------------
       # COCOAPODS INSTALL
       # ------------------------------------------------
-      #- name: Clean CocoaPods
-        #script: |
-          #echo "BOOT_TRACE: Cleaning pods"
-          #cd ios
-          #rm -rf Pods
-          #rm -rf Podfile.lock
-          #pod cache clean --all
-          #cd ..
+      - name: Clean CocoaPods
+        script: |
+          echo "BOOT_TRACE: Cleaning pods"
+          cd ios
+          rm -rf Pods
+          rm -rf Podfile.lock
+          pod cache clean --all
+          cd ..
 
       #- name: Install CocoaPods
-        #script: |
-          #echo "=============================="
-          #echo "BOOT_TRACE: COCOAPODS INSTALL"
-          #echo "=============================="
-          #cd ios
-          #pod install --repo-update --clean-install
-          #cd ..
+        script: |
+          echo "=============================="
+          echo "BOOT_TRACE: COCOAPODS INSTALL"
+          echo "=============================="
+          cd ios
+          pod install --repo-update --clean-install
+          cd ..
 
       #- name: Boot Trace — Pods
         #script: |
@@ -141,6 +141,19 @@ workflows:
           #echo "=============================="
           #ls -la ios/Pods
           #ls -la ios/Pods/Target\ Support\ Files || true
+
+      # ------------------------------------------------
+      # VERIFY PLIST
+      # ------------------------------------------------
+      - name: Verify GoogleService-Info.plist
+        script: |
+          echo "BOOT_TRACE: Checking GoogleService-Info.plist"
+          if [ -f ios/Runner/GoogleService-Info.plist ]; then
+            echo "BOOT_TRACE: GoogleService-Info.plist FOUND"
+          else
+            echo "BOOT_TRACE ERROR: GoogleService-Info.plist MISSING"
+            exit 1
+          fi
 
       # ------------------------------------------------
       # BUILD iOS ARCHIVE
@@ -155,12 +168,6 @@ workflows:
             --release \
             --build-name=1.0.$BUILD_NUMBER \
             --build-number=$BUILD_NUMBER
-
-      # Verify plist exists
-      - name: Verify GoogleService-Info.plist
-        script: |
-          echo "BOOT_TRACE: Checking GoogleService-Info.plist"
-          ls -la ios/Runner/GoogleService-Info.plist
 
       # ------------------------------------------------
       # EXPORT IPA

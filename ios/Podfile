@@ -28,7 +28,6 @@ flutter_ios_podfile_setup
 target 'Runner' do
   use_frameworks! :linkage => :static
   use_modular_headers!
-
   flutter_install_all_ios_pods File.dirname(File.realpath(__FILE__))
 end
 
@@ -38,15 +37,15 @@ post_install do |installer|
     target.build_configurations.each do |config|
       config.build_settings['IPHONEOS_DEPLOYMENT_TARGET'] = '15.0'
     end
+    
     # --- Begin GoogleService-Info.plist auto-copy ---
     resources_phase = target.build_phases.find { |bp| bp.isa == 'PBXResourcesBuildPhase' }
     if resources_phase
-      plist_file_ref = installer.pods_project.main_group.files.find { |f| f.path == 'Runner/GoogleService-Info.plist' }
-      unless plist_file_ref
-        plist_file_ref = installer.pods_project.main_group.new_file('Runner/GoogleService-Info.plist')
+      plist_path = File.join('Runner', 'GoogleService-Info.plist')
+      plist_file_ref = target.project.new_file(plist_path)
+      unless resources_phase.files.find { |f| f.file_ref == plist_file_ref }
         resources_phase.add_file_reference(plist_file_ref)
       end
     end
-    # --- End GoogleService-Info.plist auto-copy ---
   end
 end
