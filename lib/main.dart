@@ -12,24 +12,19 @@ Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   debugPrint("BOOT_TRACE: Flutter binding initialized");
 
-  await runZonedGuarded(() async {
-    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-    debugPrint("BOOT_TRACE: Firebase initialized");
+  await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+  debugPrint("BOOT_TRACE: Firebase initialized");
 
-    // catch flutter framework errors
-    FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
+  // catch flutter framework errors
+  FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
 
-    // catch async / dart errors
-    PlatformDispatcher.instance.onError = (error, stack) {
-      FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
-      return true;
-    };
-    
-    runApp(const VigilCollectorApp());
-
-  }, (error, stack) {
+  // catch async / dart errors
+  PlatformDispatcher.instance.onError = (error, stack) {
     FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);
-  });
+    return true;
+  };
+  
+  runApp(const VigilCollectorApp());
 }
 
 class VigilCollectorApp extends StatelessWidget {

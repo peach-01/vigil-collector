@@ -1,6 +1,8 @@
 import 'dart:async';
 import 'dart:typed_data';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:vigil_collector/data/wearable_storage.dart';
+import 'package:vigil_collector/logger.dart';
 import '../data/sensor_packet.dart';
 import 'wearable_service.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -32,26 +34,84 @@ class BleWearableService implements WearableService {
 
   @override
   Future<void> connect() async {
+    logStep("BLE", "CONNECT START");
+
     if (kIsWeb) {
         throw UnsupportedError("BLE wearables are not supported on Web. Please use the mobile Collector app.");
     }
 
-    await FlutterBluePlus.startScan(timeout: const Duration(seconds: 10));
-    final results = await FlutterBluePlus.scanResults.firstWhere((r) => r.isNotEmpty);
+    final savedId = await WearableStorage.load();
 
-    for (final r in results) {
-      if (_isVigilWearable(r.device)) {
-        await FlutterBluePlus.stopScan();
-        _device = r.device;
-        await _device!.connect(autoConnect: false, license: License.free);
+    // STEP 1: try reconnect
+    if (savedId != null) {
+      logStep("BLE", "Trying auto-reconnect to $savedId");
+      final device = BluetoothDevice.fromId(savedId);
+
+      try {
+        _device = device;
+        await _device!.connect(timeout: const Duration(seconds: 5), license: License.free);
+        logStep("BLE", "Auto-reconnect SUCCESS");
+
         await _discoverServices();
         await _startStreaming();
         return;
+      } catch (e) {
+        logStep("BLE", "Auto-reconnect FAILED -> scanning fallback");
       }
     }
 
-    throw Exception("No Vigil wearable found");
+    // STEP 2: scan (1st time pairing)
+    await _scanAndConnect();
   }
+
+  Future<void> _scanAndConnect() async {
+    logStep("BLE", "Starting scan...");
+    
+    BluetoothDevice? found;
+
+    final sub = FlutterBluePlus.scanResults.listen((results) {
+      for (final r in results) {
+        logStep("BLE", "Device: ${r.device.name}");
+
+        if (_isVigilWearable(r.device)) {
+          found = r.device;
+        }
+      }
+    });
+
+    await FlutterBluePlus.startScan(timeout: const Duration(seconds: 10));
+    await Future.delayed(const Duration(seconds: 10));
+
+    await FlutterBluePlus.stopScan();
+    await sub.cancel();
+
+    if (found == null) {
+      throw Exception("No Vigil wearable found");
+    }
+
+    _device = found!;
+
+    logStep("BLE", "Connecting to ${_device!.remoteId}");
+    await _device!.connect(license: License.free);
+    logStep("BLE", "Connected!");
+
+    await WearableStorage.save(_device!.remoteId.str);
+
+    await _discoverServices();
+    await _startStreaming();
+
+    _device!.connectionState.listen((state) async {
+      logStep("BLE", "Connection state: $state");
+
+      if (state == BluetoothConnectionState.disconnected) {
+        logStep("BLE", "Device disconnected -> retrying...");
+
+        await Future.delayed(const Duration(seconds: 2));
+        connect();  // auto-reconnect
+      }
+    });
+  }
+    
 
   bool _isVigilWearable(BluetoothDevice device) {
     final name = device.name.toUpperCase();
@@ -59,10 +119,16 @@ class BleWearableService implements WearableService {
   }
 
   Future<void> _discoverServices() async {
+    logStep("BLE", "Discovering services...");
+
     final services = await _device!.discoverServices();
     for (final s in services) {
+      logStep("BLE", "Service: ${s.uuid}");
+
       if (s.uuid.toString().toUpperCase() == G69_UART_SERVICE) {
         for (final c in s.characteristics) {
+          logStep("BLE", "Characteristic: ${c.uuid}");
+          
           final uuid = c.uuid.toString().toUpperCase();
           if (uuid == G69_UART_RX) _rx = c;
           if (uuid == G69_UART_TX) _tx = c;
@@ -82,6 +148,13 @@ class BleWearableService implements WearableService {
     // Known G69 "start stream" command
     final cmd = Uint8List.fromList([0xA0, 0x01, 0x01, 0xAF]);
     await _rx!.write(cmd, withoutResponse: true);
+  }
+
+  Future<void> unpair() async {
+    logStep("BLE", "UNPAIR");
+
+    await disconnect();
+    await WearableStorage.clear();
   }
 
   void _onNotify(List<int> data) {
