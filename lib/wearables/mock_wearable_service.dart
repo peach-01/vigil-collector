@@ -1,6 +1,7 @@
 import 'dart:async';
 import '../data/sensor_packet.dart';
 import 'wearable_service.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 class MockWearableService implements WearableService {
     final _controller = StreamController<SensorPacket>.broadcast();
@@ -14,7 +15,7 @@ class MockWearableService implements WearableService {
     Stream<SensorPacket> get stream => _controller.stream;
 
     @override
-    Future<void> connect() async {
+    Future<bool> connect() async {
         _timer = Timer.periodic(const Duration(seconds: 2), (_) {
             _controller.add(
                 SensorPacket(
@@ -27,10 +28,29 @@ class MockWearableService implements WearableService {
                 ),
             );
         });
+        return true;
     }
 
     @override
     Future<void> disconnect() async {
         _timer?.cancel();
+    }
+
+    @override
+    Future<void> connectToDevice(BluetoothDevice device) async {
+      // mock implementation
+    }
+
+    @override
+    Stream<List<ScanResult>> get scanStream => Stream.value([]);
+
+    @override
+    Future<void> startScan() async {
+      // mock implementation
+    }
+
+    @override
+    Future<void> stopScan() async {
+      // mock implementation
     }
 }

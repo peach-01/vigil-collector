@@ -27,7 +27,7 @@ class _LoginPageState extends State<LoginPage> {
 
     @override
     Widget build(BuildContext context) {
-      logStep("LOGIN", "LOGIN PAGE BUILD CALLED");
+      //logStep("LOGIN", "LOGIN PAGE BUILD CALLED");
 
       return Scaffold(
           appBar: AppBar(

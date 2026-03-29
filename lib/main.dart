@@ -10,10 +10,10 @@ import './firebase_options.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  debugPrint("BOOT_TRACE: Flutter binding initialized");
+  //debugPrint("BOOT_TRACE: Flutter binding initialized");
 
   await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
-  debugPrint("BOOT_TRACE: Firebase initialized");
+  //debugPrint("BOOT_TRACE: Firebase initialized");
 
   // catch flutter framework errors
   FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;
@@ -32,7 +32,7 @@ class VigilCollectorApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    debugPrint("BOOT_TRACE: MaterialApp build started");
+    //debugPrint("BOOT_TRACE: MaterialApp build started");
 
     return MaterialApp(
       title: 'VIGIL Collect',

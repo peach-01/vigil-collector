@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'sensor_packet.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -150,7 +151,7 @@ class FirestoreUploader {
                 _cachedOrgId = orgId;
                 _lastCachedUid = uid;
             } catch (e) {
-                print("[_emitNotification] Error fetching user orgId: $e");
+                debugPrint("[_emitNotification] Error fetching user orgId: $e");
                 name = uid;
             }
         }

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 
-import '../ui/connect_wearable_page.dart';
+import '../ui/connect_page.dart';
 import '../logger.dart';
 import 'login_page.dart';
 
@@ -13,15 +13,15 @@ class AuthGate extends StatelessWidget {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snap) {
-        logStep("AUTH", "ConnectionState: ${snap.connectionState}");
-        logStep("AUTH", "HasData: ${snap.hasData}");
-        logStep("AUTH", "User: ${snap.data?.uid}");
+        //logStep("AUTH", "ConnectionState: ${snap.connectionState}");
+        //logStep("AUTH", "HasData: ${snap.hasData}");
+        //logStep("AUTH", "User: ${snap.data?.uid}");
 
         if (snap.connectionState == ConnectionState.waiting) return const Scaffold(body: Center(child: Text("AUTH: WAITING")));
         if (snap.hasError) return Scaffold(body: Center(child: Text("AUTH ERROR: ${snap.error}")));        
         if (!snap.hasData) return const LoginPage();
         
-        logStep("AUTH", "Navigating to ConnectWearablePage");
+        //logStep("AUTH", "Navigating to ConnectWearablePage");
         
         return ConnectWearablePage(uid: snap.data!.uid);
       },
