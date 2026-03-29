@@ -17,7 +17,7 @@ class CommandBuilder {
   }
 
   // REAL COMMANDS
-  static Uint8List startRealTimeHR() => packet(0xA0, [0x01]);
-  static Uint8List holdRealTimeHR() => packet(0xA0, [0x03]);
-  static Uint8List stopRealTimeHR() => packet(0xA0, [0x02]);
+  static Uint8List startRealTimeHR()  => packet(0x28, [0x01]);
+  static Uint8List stopRealTimeHR()   => packet(0x28, [0x02]);
+  static Uint8List holdRealTimeHR()   => packet(0x28, [0x03]);
 }

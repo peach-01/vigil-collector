@@ -199,15 +199,24 @@ class BleWearableService implements WearableService {
       return;
     }
 
-    // Step 1: start streaming
-    await _write(CommandBuilder.startRealTimeHR());
-    await Future.delayed(const Duration(seconds: 1));
+    // Step 1: enable sensor system
+    await _write(CommandBuilder.packet(0xA1, [0x01]));
+    await Future.delayed(const Duration(milliseconds: 300));
 
-    // Step 2: maintain stream
+    // Step 2: enable realtime notify stream
+    await _write(CommandBuilder.packet(0xA3, [0x01]));
+    await Future.delayed(const Duration(milliseconds: 300));
+
+    // Step 3: start HR measure
+    await _write(CommandBuilder.startRealTimeHR());
+    await Future.delayed(const Duration(milliseconds: 500));
+    logStep("BLE", "STREAM START");
+
+    // Step 4: maintain stream
     _keepAliveTimer?.cancel();
-    _keepAliveTimer = Timer.periodic(const Duration(seconds: 3), 
-      (_) => _write(CommandBuilder.holdRealTimeHR()),
-    );
+    _keepAliveTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
+      await _write(CommandBuilder.holdRealTimeHR());
+    });
   }
 
   Future<void> _stopStreaming() async {
@@ -252,18 +261,20 @@ class BleWearableService implements WearableService {
     if (data.isEmpty) return;
 
     _buffer.addAll(data);
-    logStep("BLE", "BUFFER LEN: ${_buffer.length}");
-    if (_buffer[0] != 0x78) {
-      logStep("BLE", "DESYNC DROPPING BYTE ${_buffer[0]}");
-    }
-    while (_buffer.length >= 16) {
+
+    while (_buffer.length >= 3) {
       if (_buffer[0] != 0x78) {
         _buffer.removeAt(0);          // find frame start
         continue;
       }
 
-      final frame = _buffer.sublist(0, 16);
-      _buffer.removeRange(0, 16);
+      final len = _buffer[1];
+      final totalLen = len + 3;   // header + len + payload + checksum
+
+      if (_buffer.length < totalLen) break;
+
+      final frame = _buffer.sublist(0, totalLen);
+      _buffer.removeRange(0, totalLen);
       _parseFrame(frame);
     }
     logStep("BLE", "RAW FRAME: $data");
