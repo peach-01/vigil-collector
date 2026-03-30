@@ -25,6 +25,7 @@ class BleWearableService implements WearableService {
 
   BluetoothCharacteristic? _fee7Write;
   BluetoothCharacteristic? _fee7Notify;
+  BluetoothCharacteristic? _fee7AltNotify;
 
   StreamSubscription? _notifySub;
 
@@ -60,6 +61,8 @@ class BleWearableService implements WearableService {
         autoConnect: false,
         license: License.free,
       );
+
+      await Future.delayed(const Duration(seconds: 1));
 
       await _setup();
       logStep("BLE", "Connected SUCCESS");
@@ -128,60 +131,60 @@ class BleWearableService implements WearableService {
 
   Future<void> _setup() async {
     await _discoverServices();
+    await Future.delayed(const Duration(milliseconds: 300));
 
     // HARD GATE
     if (_tx == null || _fee7Notify == null) throw Exception("Critical characteristic missing");
     logStep("BLE", "SERVICES READY -> enabling notifications");
 
-    // Step 1: enable notifications
-    await _fee7Notify!.setNotifyValue(true);
-    await _tx!.setNotifyValue(true);
-    await Future.delayed(const Duration(milliseconds: 300));
-
     // Step 2: listen after enabling notify
     await _notifySub?.cancel();
-    _notifySub = StreamGroup.merge([
-      _tx!.value,
-      _fee7Notify!.value,
-    ]).listen(_onNotify);
+    final streams = <Stream<List<int>>>[];
+    if (_fee7Notify != null) {
+      await _setEnableNotify(_fee7Notify!);
+      streams.add(_fee7Notify!.value);
+    }
+    if (_fee7AltNotify != null) {
+      await _setEnableNotify(_fee7AltNotify!);
+      streams.add(_fee7AltNotify!.value);
+    }
+    if (_tx != null) {
+      await _setEnableNotify(_tx!);
+      streams.add(_tx!.value);
+    }
+    _notifySub = StreamGroup.merge(streams).listen(_onNotify);
 
-    logStep("BLE", "WATING FOR DEVICE TO BE READY...");
-    /*final ready = await _waitForFirstPacket();
-    if (!ready) {
-      throw Exception("Device never became ready");
+    await Future.delayed(const Duration(seconds: 1));
+
+    // Step 4: device init
+    logStep("BLE", "INIT SEQUENCE START");
+    await _deviceInit();
+
+    /*final cands = [
+      [0xA1, [0x01]],
+      [0xA1, [0x02]],
+      [0xA0, [0xFF]],
+      [0xA3, [0x01]],
+    ];
+
+    for (final c in cands) {
+      await _write(CommandBuilder.packet(c[0] as int, c[1] as List<int>));
+      await Future.delayed(const Duration(milliseconds: 400));
+
     }*/
 
-    logStep("BLE", "INIT SEQUENCE START");
-
-    await _deviceInit();
+    // Step 5: start stream
     logStep("BLE", "INIT COMPLETE -> START STREAM");
-
     await _startStreaming();
   }
 
-  /*Future<bool> _waitForFirstPacket() async {
-    final completer = Completer<bool>();
-
-    late StreamSubscription sub;
-    sub = StreamGroup.merge([
-      _tx!.value,
-      _fee7Notify!.value,
-    ]).listen((data) {
-      if (data.isNotEmpty) {
-        logStep("BLE", "DEVICE READY PACKET: $data");
-        completer.complete(true);
-        sub.cancel();
-      }
-    });
-
-    return completer.future.timeout(
-      const Duration(seconds: 5),
-      onTimeout: () {
-        sub.cancel();
-        return false;
-      },
-    );
-  }*/
+  Future<void> _setEnableNotify(BluetoothCharacteristic s) async {
+    if (s.properties.indicate || s.properties.notify) {
+      await s.setNotifyValue(true);
+    } else {
+      logStep("BLE", "SKIP notify (not supported: ${s.uuid})");
+    }
+  }
 
   Future<void> _deviceInit() async {
     // Step 1: Time sync
@@ -209,6 +212,9 @@ class BleWearableService implements WearableService {
           if (c.uuid.toString().toUpperCase() == "FEA1") {
             _fee7Notify = c;
           }
+          if (c.uuid.toString().toUpperCase() == "FEC9") {
+            _fee7AltNotify = c;
+          }
         }
       }
       if (s.uuid.toString().toUpperCase() == CUSTOM_SERVICE) {
@@ -234,17 +240,23 @@ class BleWearableService implements WearableService {
     await _write(CommandBuilder.packet(0xA5, [0x01]));
     await Future.delayed(const Duration(milliseconds: 300));
 
-    // Step 2: enable sensor system
-    await _write(CommandBuilder.packet(0xA0, [0x01]));
-    await Future.delayed(const Duration(milliseconds: 300));
+    // Step 2: unlock / mode switch
+    await _write(CommandBuilder.packet(0xA2, [0x01]));
+    await Future.delayed(const Duration(milliseconds: 500));
 
-    // Step 3: maintain stream
+    // Step 3: enable sensor system
+    await _write(CommandBuilder.packet(0xA0, [0x01]));
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    // Step 4: start data stream
+    await _write(CommandBuilder.packet(0xA1, [0x01]));
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    // Step 5: maintain stream
     _keepAliveTimer?.cancel();
-    _keepAliveTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
+    _keepAliveTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
       await _write(CommandBuilder.packet(0xA0, [0x03]));
     });
-
-    await _write(CommandBuilder.packet(0x00, []));
   }
 
   Future<void> _stopStreaming() async {
@@ -276,17 +288,18 @@ class BleWearableService implements WearableService {
   }
 
   Future<void> _write(Uint8List packet) async {
-    if (_fee7Write != null) {
-      await _fee7Write!.write(packet, withoutResponse: false);
-    } else if (_rx != null) {
-      await _rx!.write(packet, withoutResponse: false);
+    if (_fee7Write == null) {
+      logStep("BLE", "FEE7 WRITE MISSING - CANNOT COMMUNICATE W/ DEVICE");
+      return;
     }
+    await _fee7Write!.write(packet, withoutResponse: false);
   }
 
   // ----------- NOTIFY ------------
 
   void _onNotify(List<int> data) {
     if (data.isEmpty) return;
+    logStep("BLE", "NOTIFY HIT: $data");
 
     _buffer.addAll(data);
 
