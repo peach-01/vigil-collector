@@ -144,6 +144,13 @@ class BleWearableService implements WearableService {
       _tx!.value,
       _fee7Notify!.value,
     ]).listen(_onNotify);
+
+    logStep("BLE", "WATING FOR DEVICE TO BE READY...");
+    /*final ready = await _waitForFirstPacket();
+    if (!ready) {
+      throw Exception("Device never became ready");
+    }*/
+
     logStep("BLE", "INIT SEQUENCE START");
 
     await _deviceInit();
@@ -151,6 +158,30 @@ class BleWearableService implements WearableService {
 
     await _startStreaming();
   }
+
+  /*Future<bool> _waitForFirstPacket() async {
+    final completer = Completer<bool>();
+
+    late StreamSubscription sub;
+    sub = StreamGroup.merge([
+      _tx!.value,
+      _fee7Notify!.value,
+    ]).listen((data) {
+      if (data.isNotEmpty) {
+        logStep("BLE", "DEVICE READY PACKET: $data");
+        completer.complete(true);
+        sub.cancel();
+      }
+    });
+
+    return completer.future.timeout(
+      const Duration(seconds: 5),
+      onTimeout: () {
+        sub.cancel();
+        return false;
+      },
+    );
+  }*/
 
   Future<void> _deviceInit() async {
     // Step 1: Time sync
@@ -199,24 +230,21 @@ class BleWearableService implements WearableService {
       return;
     }
 
-    // Step 1: enable sensor system
-    await _write(CommandBuilder.packet(0xA1, [0x01]));
+    // Step 1: wake command
+    await _write(CommandBuilder.packet(0xA5, [0x01]));
     await Future.delayed(const Duration(milliseconds: 300));
 
-    // Step 2: enable realtime notify stream
-    await _write(CommandBuilder.packet(0xA3, [0x01]));
+    // Step 2: enable sensor system
+    await _write(CommandBuilder.packet(0xA0, [0x01]));
     await Future.delayed(const Duration(milliseconds: 300));
 
-    // Step 3: start HR measure
-    await _write(CommandBuilder.startRealTimeHR());
-    await Future.delayed(const Duration(milliseconds: 500));
-    logStep("BLE", "STREAM START");
-
-    // Step 4: maintain stream
+    // Step 3: maintain stream
     _keepAliveTimer?.cancel();
     _keepAliveTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
-      await _write(CommandBuilder.holdRealTimeHR());
+      await _write(CommandBuilder.packet(0xA0, [0x03]));
     });
+
+    await _write(CommandBuilder.packet(0x00, []));
   }
 
   Future<void> _stopStreaming() async {
