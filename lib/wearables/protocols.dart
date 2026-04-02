@@ -98,6 +98,7 @@ class HeartRateProtocol implements BleProtocol {
       hr = data[1];
     }
 
+    logStep("HR", "RAW HR: $data");
     out.add(SensorPacket(heartRate: hr.toDouble(), hrv: 0, temp: 0, motion: 0, sleepQuality: 0, sleepTime: 0));
   }
 }
