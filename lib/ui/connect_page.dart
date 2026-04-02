@@ -63,6 +63,7 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
         lastPacket = packet;
 
         final uploader = FirestoreUploader();
+        await uploader.ensureWearableExists(widget.uid, manager.ble.deviceId);
         unawaited(uploader.ingestTelemetry(uid: widget.uid, wid: manager.ble.deviceId, packet: packet));
 
         setState(() {

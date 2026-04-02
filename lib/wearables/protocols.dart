@@ -85,20 +85,27 @@ class VigilProtocol implements BleProtocol {
 class HeartRateProtocol implements BleProtocol {
   @override
   void onData(List<int> data, StreamController<SensorPacket> out) {
-    if (data.isEmpty) return;
+    if (data.length < 2) return;
+    int hr = 0;
 
+    // try standard
     final flags = data[0];
     final is16Bit = (flags & 0x01) != 0;
 
-    int hr;
-
-    if (is16Bit) {
-      hr = data[1] | (data[2] << 8);
+    if (data.length <= 3) {
+      hr = is16Bit ? (hr = data[1] | (data[2] << 8)) : data[1];
     } else {
-      hr = data[1];
+      hr = data[1]; // fallback
     }
 
     logStep("HR", "RAW HR: $data");
-    out.add(SensorPacket(heartRate: hr.toDouble(), hrv: 0, temp: 0, motion: 0, sleepQuality: 0, sleepTime: 0));
+    out.add(SensorPacket(
+      heartRate: hr.toDouble(), 
+      hrv: 0, 
+      temp: 0, 
+      motion: 0, 
+      sleepQuality: 0, 
+      sleepTime: 0,
+    ));
   }
 }

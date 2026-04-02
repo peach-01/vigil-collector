@@ -93,14 +93,16 @@ class FirestoreUploader {
         await telemetryRef.set(upload);
 
         // updates the user's latest metrics
-        await _db.collection('users').doc(uid).update({"latestMetrics": upload});
+        await _db.collection('users').doc(uid).set({"latestMetrics": upload}, SetOptions(merge: true));
 
         // Heartbeat update
-        await _db.collection('wearables').doc(wearableId).update({
-            'status.lastSeen': FieldValue.serverTimestamp(),
-            //'status.batteryPct': packet.batteryPct,
-            'status.online': true,    
-        });
+        await _db.collection('wearables').doc(wearableId).set({
+          'status': {
+            'lastSeen': FieldValue.serverTimestamp(),
+            //'batteryPct': packet.batteryPct,
+            'online': true,    
+          }
+        }, SetOptions(merge: true));
 
         
     }
@@ -197,4 +199,21 @@ class FirestoreUploader {
             print("[_emitNotifications] Failed to emit notifications: $e");
         }
     }
+
+  Future<void> ensureWearableExists(String uid, String wid) async {
+    final ref = _db.collection('wearables').doc(wid);
+    final snap = await ref.get();
+
+    if (!snap.exists) {
+      await ref.set({
+        'wearableId': wid,
+        'assignedTo': uid,
+        'createdAt': FieldValue.serverTimestamp(),
+        'status': {
+          'online': true,
+          'lastSeen': FieldValue.serverTimestamp(),
+        }
+      }, SetOptions(merge: true));
+    }
+  }
 }
