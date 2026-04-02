@@ -6,37 +6,28 @@ import 'package:vigil_collector/data/wearable_storage.dart';
 import 'package:vigil_collector/logger.dart';
 import 'package:vigil_collector/wearables/cmd_builder.dart';
 import '../data/sensor_packet.dart';
+import 'package:vigil_collector/wearables/protocols.dart';
+
 import 'wearable_service.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 
-const String UART_SERVICE =   "6E40FFF0-B5A3-F393-E0A9-E50E24DCCA9E";
-const String UART_RX =        "6E400002-B5A3-F393-E0A9-E50E24DCCA9E";
-const String UART_TX =        "6E400003-B5A3-F393-E0A9-E50E24DCCA9E";
-
-const String CUSTOM_SERVICE =   "DE5BF728-D711-4E47-AF26-65E3012A5DC7";
-const String CUSTOM_RX =        "DE5BF72A-D711-4E47-AF26-65E3012A5DC7";
-const String CUSTOM_TX =        "DE5BF729-D711-4E47-AF26-65E3012A5DC7";
-
-
 class BleWearableService implements WearableService {
   BluetoothDevice? _device;
-  BluetoothCharacteristic? _rx;
-  BluetoothCharacteristic? _tx;
 
-  BluetoothCharacteristic? _fee7Write;
-  BluetoothCharacteristic? _fee7Notify;
-  BluetoothCharacteristic? _fee7AltNotify;
+  BleProtocol _protocol = UnknownProtocol();
+
+  BluetoothCharacteristic? _writeChar;
+  List<BluetoothCharacteristic> _notifyChars = [];
 
   StreamSubscription? _notifySub;
+  StreamSubscription? _connectSub;
+  StreamSubscription? _scanResultsSub;
 
   final _dataController = StreamController<SensorPacket>.broadcast();
   final _scanController = StreamController<List<ScanResult>>.broadcast();
-  
-  final List<int> _buffer = [];
-
-  StreamSubscription? _scanResultsSub;
 
   Timer? _keepAliveTimer;
+  bool _isStreaming = false;
 
   @override
   Stream<SensorPacket> get stream => _dataController.stream;
@@ -47,6 +38,7 @@ class BleWearableService implements WearableService {
   @override
   String get deviceId => _device?.remoteId.str ?? "unknown_device";
 
+
   // ----------- CONNECT ------------
 
   @override
@@ -55,20 +47,28 @@ class BleWearableService implements WearableService {
     if (_device == null) return false;
 
     try {
-      logStep("BLE", "Attempting to pair to devide: $_device");
       await _device!.connect(
         timeout: const Duration(seconds: 5),
         autoConnect: false,
         license: License.free,
       );
 
-      await Future.delayed(const Duration(seconds: 1));
+      _connectSub?.cancel();
+      _connectSub = _device!.connectionState.listen((state) {
+        if (state == BluetoothConnectionState.disconnected) {
+          logStep("BLE", "Disconnected");
+          _cleanupConnection();
+        }
+      });
 
-      await _setup();
-      logStep("BLE", "Connected SUCCESS");
+      try {
+        await _device!.requestMtu(185);
+      } catch (_) {}
+
+      await _setup().timeout(const Duration(seconds: 10));
       return true;
     } catch (e) {
-      logStep("BLE", "Connect failed: $e");
+      logStep("BLE", "Connect FAIL: $e");
       return false;
     }
   }
@@ -82,21 +82,24 @@ class BleWearableService implements WearableService {
   @override
   Future<void> disconnect() async {
     final d = _device;
-
-    _device = null;
-    _rx = null;
-    _tx = null;
-    _buffer.clear();
-
-    await _stopStreaming();
-
-    await _notifySub?.cancel();
-    await _scanResultsSub?.cancel();
+    _cleanupConnection();
 
     await d?.disconnect();
     await WearableStorage.clear();
 
     logStep("BLE", "Disconnect SUCCESS");
+  }
+
+  void _cleanupConnection() {
+    _device = null;
+    _notifyChars.clear();
+    _writeChar = null;
+    _protocol = UnknownProtocol();
+    _isStreaming = false;
+
+    _notifySub?.cancel();
+    _connectSub?.cancel();
+    _keepAliveTimer?.cancel();
   }
 
   // ----------- SCAN ------------
@@ -108,7 +111,7 @@ class BleWearableService implements WearableService {
 
     _scanResultsSub?.cancel();
     _scanResultsSub = FlutterBluePlus.scanResults.listen((results) async {
-      final nearby = results.where((r) => r.rssi > -75).toList()..sort((a, b) => b.rssi.compareTo(a.rssi));
+      final nearby = results.where((r) => r.rssi > -90).toList()..sort((a, b) => b.rssi.compareTo(a.rssi));
       final vigilDevices = results.where((r) => _isVigilWearable(r)).toList()..sort((a, b) => b.rssi.compareTo(a.rssi));      
       
       _scanController.add(vigilDevices.isNotEmpty ? vigilDevices : nearby);
@@ -124,280 +127,139 @@ class BleWearableService implements WearableService {
   bool _isVigilWearable(ScanResult r) {
     final name = r.device.name.toUpperCase();
     final adv = r.advertisementData.advName.toUpperCase();
-    return name.contains("VIGIL") || adv.contains("VIGIL") || name.contains("DS05") || adv.contains("DS05");
+    return name.contains("VIGIL") || adv.contains("VIGIL");
+  }
+
+  bool _isCommandDevice() {
+    final name = _device?.platformName.toUpperCase() ?? "";
+    return name.contains("VIGIL");
   }
 
   // ----------- SETUP ------------
 
   Future<void> _setup() async {
     await _discoverServices();
-    await Future.delayed(const Duration(milliseconds: 300));
+    await _enableNotify();
 
-    // HARD GATE
-    if (_tx == null || _fee7Notify == null) throw Exception("Critical characteristic missing");
-    logStep("BLE", "SERVICES READY -> enabling notifications");
-
-    // Step 2: listen after enabling notify
-    await _notifySub?.cancel();
-    final streams = <Stream<List<int>>>[];
-    if (_fee7Notify != null) {
-      await _setEnableNotify(_fee7Notify!);
-      streams.add(_fee7Notify!.value);
+    if (_isCommandDevice()) {
+      await _startStreaming();
     }
-    if (_fee7AltNotify != null) {
-      await _setEnableNotify(_fee7AltNotify!);
-      streams.add(_fee7AltNotify!.value);
-    }
-    if (_tx != null) {
-      await _setEnableNotify(_tx!);
-      streams.add(_tx!.value);
-    }
-    _notifySub = StreamGroup.merge(streams).listen(_onNotify);
-
-    await Future.delayed(const Duration(seconds: 1));
-
-    // Step 4: device init
-    logStep("BLE", "INIT SEQUENCE START");
-    await _deviceInit();
-
-    /*final cands = [
-      [0xA1, [0x01]],
-      [0xA1, [0x02]],
-      [0xA0, [0xFF]],
-      [0xA3, [0x01]],
-    ];
-
-    for (final c in cands) {
-      await _write(CommandBuilder.packet(c[0] as int, c[1] as List<int>));
-      await Future.delayed(const Duration(milliseconds: 400));
-
-    }*/
-
-    // Step 5: start stream
-    logStep("BLE", "INIT COMPLETE -> START STREAM");
-    await _startStreaming();
-  }
-
-  Future<void> _setEnableNotify(BluetoothCharacteristic s) async {
-    if (s.properties.indicate || s.properties.notify) {
-      await s.setNotifyValue(true);
-    } else {
-      logStep("BLE", "SKIP notify (not supported: ${s.uuid})");
-    }
-  }
-
-  Future<void> _deviceInit() async {
-    // Step 1: Time sync
-    await _write(_buildTimeSync());
-    await Future.delayed(const Duration(milliseconds: 500));
-
-    // Step 2: User profile
-    await _write(_buildUserProfile());
-    await Future.delayed(const Duration(milliseconds: 500));
-
-    // Step 3: binding trigger (optional)
-    await _write(CommandBuilder.packet(0x03, [0x01]));
-    await Future.delayed(const Duration(milliseconds: 500));
   }
 
   Future<void> _discoverServices() async {
+    _notifyChars.clear();
+    _writeChar = null;
+
     final services = await _device!.discoverServices();
 
     for (final s in services) {
-      if (s.uuid.toString().toUpperCase() == "FEE7") {
-        for (final c in s.characteristics) {
-          if (c.uuid.toString().toUpperCase() == "FEA2") {
-            _fee7Write = c;
-          }
-          if (c.uuid.toString().toUpperCase() == "FEA1") {
-            _fee7Notify = c;
-          }
-          if (c.uuid.toString().toUpperCase() == "FEC9") {
-            _fee7AltNotify = c;
-          }
-        }
-      }
-      if (s.uuid.toString().toUpperCase() == CUSTOM_SERVICE) {
+      logStep("BLE", "SERVICE: ${s.uuid}");
+
       for (final c in s.characteristics) {
-        if (c.uuid.toString().toUpperCase() == CUSTOM_RX) {
-          _rx = c; // write
+        final props = c.properties;
+        logStep("BLE", "CHAR: ${c.uuid} | notify=${props.notify} indicate=${props.indicate} write=${props.write} writeNR=${props.writeWithoutResponse}");
+
+        final uuid = c.uuid.toString().toLowerCase();
+
+        // protocol setection
+        if (uuid.contains("2a37")) {
+          _protocol = HeartRateProtocol();
+          logStep("BLE", "Protocol: HeartRate");
         }
-        if (c.uuid.toString().toUpperCase() == CUSTOM_TX) {
-          _tx = c; // notify
+
+        // notify
+        if (props.notify || props.indicate) {
+          _notifyChars.add(c);
+        }
+
+        // write
+        if (_writeChar == null && (props.writeWithoutResponse || props.write)) {
+          _writeChar = c;
         }
       }
     }
+
+    if (_notifyChars.isEmpty) {
+      throw Exception("No notify chars found");
     }
   }
 
-  Future<void> _startStreaming() async {
-    if (_fee7Write == null && _rx == null) {
-      logStep("BLE", "No write characteristic available");
-      return;
+  Future<void> _enableNotify() async {
+    await _notifySub?.cancel();
+
+    final streams = <Stream<List<int>>>[];
+    
+    for (final c in _notifyChars) {
+      try {
+        await c.setNotifyValue(true);
+        streams.add(c.value);
+        logStep("BLE", "LISTENING: ${c.uuid}");
+      } catch (e) {
+        logStep("BLE", "NOTIFY FAIL: ${c.uuid} - $e");
+      }
     }
+
+    _notifySub = StreamGroup.merge(streams).listen(_onNotify);
+  }
+
+  // ----------- STREAMING ------------
+
+  Future<void> _startStreaming() async {
+    if (_writeChar == null || _isStreaming) return;
+
+    _isStreaming = true;
 
     // Step 1: wake command
     await _write(CommandBuilder.packet(0xA5, [0x01]));
-    await Future.delayed(const Duration(milliseconds: 300));
+    await Future.delayed(const Duration(milliseconds: 200));
 
     // Step 2: unlock / mode switch
     await _write(CommandBuilder.packet(0xA2, [0x01]));
-    await Future.delayed(const Duration(milliseconds: 500));
+    await Future.delayed(const Duration(milliseconds: 300));
 
     // Step 3: enable sensor system
-    await _write(CommandBuilder.packet(0xA0, [0x01]));
-    await Future.delayed(const Duration(milliseconds: 500));
+    await _write(CommandBuilder.packet(0xA0, [0xFF]));
 
-    // Step 4: start data stream
-    await _write(CommandBuilder.packet(0xA1, [0x01]));
-    await Future.delayed(const Duration(milliseconds: 500));
-
-    // Step 5: maintain stream
+    // Step 4: maintain stream
     _keepAliveTimer?.cancel();
     _keepAliveTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
       await _write(CommandBuilder.packet(0xA0, [0x03]));
     });
   }
 
-  Future<void> _stopStreaming() async {
-    await _write(CommandBuilder.stopRealTimeHR());
-    _keepAliveTimer?.cancel();
-  }
-
-  Uint8List _buildTimeSync() {
-    final now = DateTime.now();
-
-    return CommandBuilder.packet(0x01, [
-      now.year - 2000,
-      now.month,
-      now.day,
-      now.hour,
-      now.minute,
-      now.second,
-    ]);
-  }
-
-  Uint8List _buildUserProfile() {
-    return CommandBuilder.packet(0x02, [
-      0x01,   // metric
-      25,     // age
-      175,    // height
-      70,     // weight
-      0x00,   // gender
-    ]);
-  }
-
   Future<void> _write(Uint8List packet) async {
-    if (_fee7Write == null) {
-      logStep("BLE", "FEE7 WRITE MISSING - CANNOT COMMUNICATE W/ DEVICE");
+    if (_writeChar == null) {
+      logStep("BLE", "NO WRITE CHARACTERISTIC AVAILABLE");
       return;
     }
-    await _fee7Write!.write(packet, withoutResponse: false);
+
+    try {
+      await _writeChar!.write(packet, withoutResponse: true);
+    } catch (_) {
+      try {
+        await _writeChar!.write(packet, withoutResponse: false);
+      } catch (e) {
+        logStep("BLE", "WRITE FAIL: $e");
+      }
+    }
   }
 
   // ----------- NOTIFY ------------
 
   void _onNotify(List<int> data) {
-    if (data.isEmpty) return;
-    logStep("BLE", "NOTIFY HIT: $data");
+    if (!_dataController.hasListener) return;
 
-    _buffer.addAll(data);
-
-    while (_buffer.length >= 3) {
-      if (_buffer[0] != 0x78) {
-        _buffer.removeAt(0);          // find frame start
-        continue;
+    // protocol fallback
+    if (_protocol is UnknownProtocol && data.isNotEmpty) {
+      if (data.first == 0x78) {
+        _protocol = VigilProtocol();
       }
-
-      final len = _buffer[1];
-      final totalLen = len + 3;   // header + len + payload + checksum
-
-      if (_buffer.length < totalLen) break;
-
-      final frame = _buffer.sublist(0, totalLen);
-      _buffer.removeRange(0, totalLen);
-      _parseFrame(frame);
-    }
-    logStep("BLE", "RAW FRAME: $data");
-  }
-
-  void _parseFrame(List<int> frame) {
-    final type = frame[3];
-
-    double hr = 0, motion = 0, temp = 0, hrv = 0, sleepQ = 0, sleepT = 0;
-
-    switch (type) {
-      case 0x07: // Heart Rate
-        hr = frame[5].toDouble();
-        logStep("BLE", "HR (live): $hr");
-        break;
-
-      case 0x0B:  // Secondary HR? (resting/sleep)
-        hr = frame[5].toDouble();
-        logStep("BLE", "HR (secondary): $hr");
-        break;
-
-      case 0x0D: // Motion
-        motion = frame[8].toDouble();   // primary activity
-        final motion2 = frame[11];      // secondary signal
-
-        final cumulative = (frame[13] << 8 | frame[14]);
-        logStep("BLE", "MOTION: $motion | M2: $motion2 | CUM: $cumulative");
-        break;
-
-      case 0x03: // Temp
-        temp = frame[3] / 10.0;
-        break;
-
-      case 0x15:  // HRV
-        hrv = frame[5].toDouble();
-        break;
-
-      case 0x16:
-        logStep("BLE", "STRESS: ${frame[5]}");
-        break;
-
-      case 0x04: // Sleep
-        sleepQ = frame[3].toDouble();
-        sleepT = frame[4].toDouble();
-        break;
-
-      default:
-        logStep("BLE", "UNKOWN TYPE: $type DATA: $frame");
     }
 
-    logStep("BLE", "TYPE=$type VALUE=${frame[5]} FULL=$frame");
-
-    _dataController.add(
-      SensorPacket(
-        heartRate: hr,
-        hrv: hrv,
-        temp: temp,
-        motion: motion,
-        sleepQuality: sleepQ,
-        sleepTime: sleepT,
-      ),
-    );
+    try {
+      _protocol.onData(data, _dataController);
+    } catch (e) {
+      logStep("BLE", "PARSE ERROR: $e");
+    }
   }
 }
-
-/* 
--------------------- PACKET STRUCTURE ------------------
-Byte Index      Val           Meaning
---------------------------------------------------------
-0               0x78          Start of frame (header)
-1               0x07          Packet length / protocol version
-2               0x01          Device ID / stream ID
-3               varies        SENSOR TYPE
-4               increments    counter
-5               varies        HR (live)
-6-7
-8               varies        Activity Level / Motion
-9-10
-11              varies        Motion Magnitude? (filtered accel?)
-12
-13
-14
-15              increments    checksum
---------------------------------------------------------
-*/
