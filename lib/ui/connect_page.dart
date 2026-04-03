@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:vigil_collector/logger.dart';
 
 import 'package:vigil_collector/ui/widgets/connected_view.dart';
 import 'package:vigil_collector/ui/widgets/not_found_view.dart';
@@ -39,6 +40,9 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
     WearableState mode = WearableState.idle;
     List<ScanResult> devices = [];
 
+    bool _registered = false;
+    late final FirestoreUploader uploader;
+
 
     @override
     void initState() {
@@ -51,8 +55,33 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
     }
 
     Future<void> _init() async {
-      stateSub = manager.state.listen((state) {
+      uploader = FirestoreUploader();
+
+      stateSub = manager.state.listen((state) async {
         setState(() => mode = state);
+
+        // register after connect
+        if ((state == WearableState.connected || state == WearableState.streaming) && !_registered) {
+          final wid = manager.ble.deviceId;
+          if (wid != "unknown_device") {
+            try {
+              await uploader.registerWearable(
+                uid: widget.uid, 
+                wearableId: wid, 
+                type: "heart_rate_monitor",
+              );
+
+              _registered = true;
+              logStep("CONNECT", "Wearable registered: $wid");
+            } catch (e) {
+              logStep("CONNECT", "Registration FAILED: $e");
+            }
+          }
+        }
+
+        if (state == WearableState.idle || state == WearableState.scanning) {
+          _registered = false;
+        }
       });
 
       deviceSub = manager.devices.listen((list) {
@@ -62,8 +91,9 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
       dataSub = manager.data.listen((packet) async {
         lastPacket = packet;
 
-        final uploader = FirestoreUploader();
-        await uploader.ensureWearableExists(widget.uid, manager.ble.deviceId);
+        final wid = manager.ble.deviceId;
+        if (wid == "unknown_device") return;
+
         unawaited(uploader.ingestTelemetry(uid: widget.uid, wid: manager.ble.deviceId, packet: packet));
 
         setState(() {
@@ -100,7 +130,6 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
 
     @override
     Widget build(BuildContext context) {
-        //logStep("UI", "BUILD CALLED - status: $status");
         Widget body;
 
         switch (mode) {
