@@ -53,4 +53,10 @@ class MockWearableService implements WearableService {
     Future<void> stopScan() async {
       // mock implementation
     }
+
+    @override
+  Future<bool> reconnectLastDevice() {
+    // TODO: implement reconnectLastDevice
+    throw UnimplementedError();
+  }
 }

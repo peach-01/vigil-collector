@@ -61,23 +61,26 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
 
         // register after connect
         if ((state == WearableState.connected || state == WearableState.streaming) && !_registered) {
+          if (_registered) return;
+          _registered = true;
+          
           final wid = manager.ble.deviceId;
-          if (wid != "unknown_device") {
-            try {
-              await uploader.registerWearable(
-                uid: widget.uid, 
-                wearableId: wid, 
-                type: "heart_rate_monitor",
-              );
+          if (wid == "unknown_device") return;
+          
+          try {
+            await uploader.registerWearable(
+              uid: widget.uid, 
+              wearableId: wid, 
+              type: "heart_rate_monitor",
+            );
 
-              pipeline?.dispose();
-              pipeline = DataPipeline(uploader: uploader, uid: widget.uid, wid: wid);
+            pipeline?.dispose();
+            pipeline = DataPipeline(uploader: uploader, uid: widget.uid, wid: wid);
 
-              _registered = true;
-              logStep("CONNECT", "Wearable registered: $wid");
-            } catch (e) {
-              logStep("CONNECT", "Registration FAILED: $e");
-            }
+            logStep("CONNECT", "Wearable registered: $wid");
+          } catch (e) {
+            logStep("CONNECT", "Registration FAILED: $e");
+            _registered = false;
           }
         }
 
@@ -99,7 +102,11 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
         });
       });
 
-      await manager.connect();
+      final reconnected = await manager.reconnect();
+
+      if (!reconnected) {
+        await manager.connect();  // scan falback
+      }
     }
 
     bool _isVigilWearable(ScanResult r) {
@@ -120,8 +127,10 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
 
     @override
     void dispose() {
+      deviceSub?.cancel();
       stateSub?.cancel();
       dataSub?.cancel();
+
       manager.dispose();
       super.dispose();
     }

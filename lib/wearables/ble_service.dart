@@ -27,7 +27,9 @@ class BleWearableService implements WearableService {
   final _scanController = StreamController<List<ScanResult>>.broadcast();
 
   Timer? _keepAliveTimer;
+
   bool _isStreaming = false;
+  bool _isConnecting = false;
 
   @override
   Stream<SensorPacket> get stream => _dataController.stream;
@@ -44,7 +46,8 @@ class BleWearableService implements WearableService {
   @override
   Future<bool> connect() async {
     if (kIsWeb) throw UnsupportedError("BLE wearables are not supported on Web. Please use the mobile Collector app.");
-    if (_device == null) return false;
+    if (_device == null || _isConnecting) return false;
+    _isConnecting = true;
 
     try {
       await _device!.connect(
@@ -53,30 +56,49 @@ class BleWearableService implements WearableService {
         license: License.free,
       );
 
-      _connectSub?.cancel();
-      _connectSub = _device!.connectionState.listen((state) {
-        if (state == BluetoothConnectionState.disconnected) {
-          logStep("BLE", "Disconnected");
-          _cleanupConnection();
-        }
-      });
+      _listenConnectState();
+      unawaited(_setup());
 
-      try {
-        await _device!.requestMtu(185);
-      } catch (_) {}
+      await WearableStorage.saveLastDevice(_device!.remoteId.str);
 
-      await _setup().timeout(const Duration(seconds: 10));
       return true;
     } catch (e) {
       logStep("BLE", "Connect FAIL: $e");
       return false;
+    } finally {
+      _isConnecting = false;
     }
+  }
+
+  void _listenConnectState() {
+    _connectSub?.cancel();
+    _connectSub = _device!.connectionState.listen((state) {
+      if (state == BluetoothConnectionState.disconnected) {
+        logStep("BLE", "Disconnected");
+        _cleanupConnection();
+      }
+    });
   }
 
   @override
   Future<void> connectToDevice(BluetoothDevice device) async {
     _device = device;
     await connect();
+  }
+
+  @override
+  Future<bool> reconnectLastDevice() async {
+    final wid = await WearableStorage.getLastDevice();
+    if (wid == null) return false;
+
+    try {
+      _device = BluetoothDevice.fromId(wid);
+      logStep("BLE", "Reconnecting to $wid");
+      return await connect();
+    } catch (e) {
+      logStep("BLE", "Reconnect FAIL: $e");
+      return false;
+    }
   }
 
   @override
@@ -92,14 +114,16 @@ class BleWearableService implements WearableService {
 
   void _cleanupConnection() {
     _device = null;
+    _protocol = UnknownProtocol();
+
     _notifyChars.clear();
     _writeChar = null;
-    _protocol = UnknownProtocol();
-    _isStreaming = false;
 
     _notifySub?.cancel();
     _connectSub?.cancel();
     _keepAliveTimer?.cancel();
+
+    _isStreaming = false;
   }
 
   // ----------- SCAN ------------
@@ -130,19 +154,18 @@ class BleWearableService implements WearableService {
     return name.contains("VIGIL") || adv.contains("VIGIL");
   }
 
-  bool _isCommandDevice() {
-    final name = _device?.platformName.toUpperCase() ?? "";
-    return name.contains("VIGIL");
-  }
-
   // ----------- SETUP ------------
 
   Future<void> _setup() async {
-    await _discoverServices();
-    await _enableNotify();
+    try {
+      await _discoverServices();
+      await _enableNotify();
 
-    if (_isCommandDevice()) {
-      await _startStreaming();
+      if (_writeChar != null && !_isStreaming) {
+        await _startStreaming();
+      }
+    } catch (e) {
+      logStep("BLE", "Setup FAIL: $e");
     }
   }
 
@@ -153,18 +176,13 @@ class BleWearableService implements WearableService {
     final services = await _device!.discoverServices();
 
     for (final s in services) {
-      logStep("BLE", "SERVICE: ${s.uuid}");
-
       for (final c in s.characteristics) {
         final props = c.properties;
-        logStep("BLE", "CHAR: ${c.uuid} | notify=${props.notify} indicate=${props.indicate} write=${props.write} writeNR=${props.writeWithoutResponse}");
-
         final uuid = c.uuid.toString().toLowerCase();
 
-        // protocol setection
+        // protocol selection
         if (uuid.contains("2a37")) {
           _protocol = HeartRateProtocol();
-          logStep("BLE", "Protocol: HeartRate");
         }
 
         // notify
@@ -180,7 +198,7 @@ class BleWearableService implements WearableService {
     }
 
     if (_notifyChars.isEmpty) {
-      throw Exception("No notify chars found");
+      throw Exception("No notify characteristics found");
     }
   }
 
@@ -228,10 +246,7 @@ class BleWearableService implements WearableService {
   }
 
   Future<void> _write(Uint8List packet) async {
-    if (_writeChar == null) {
-      logStep("BLE", "NO WRITE CHARACTERISTIC AVAILABLE");
-      return;
-    }
+    if (_writeChar == null) return;
 
     try {
       await _writeChar!.write(packet, withoutResponse: true);
@@ -250,10 +265,8 @@ class BleWearableService implements WearableService {
     if (!_dataController.hasListener) return;
 
     // protocol fallback
-    if (_protocol is UnknownProtocol && data.isNotEmpty) {
-      if (data.first == 0x78) {
-        _protocol = VigilProtocol();
-      }
+    if (_protocol is UnknownProtocol && data.isNotEmpty && data.first == 0x78) {
+      _protocol = VigilProtocol();
     }
 
     try {

@@ -2,6 +2,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 class WearableStorage {
   static const _key = "paired_device_id";
+  static const _last = "last_device";
 
   static Future<void> save(String id) async {
     final prefs = await SharedPreferences.getInstance();
@@ -20,11 +21,11 @@ class WearableStorage {
 
   static Future<void> saveLastDevice(String id) async {
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString("last_device", id);
+    await prefs.setString(_last, id);
   }
 
   static Future<String?> getLastDevice() async {
     final prefs = await SharedPreferences.getInstance();
-    return prefs.getString("last_device");
+    return prefs.getString(_last);
   }
 }

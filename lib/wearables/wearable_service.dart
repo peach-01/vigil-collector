@@ -10,6 +10,7 @@ abstract class WearableService {
     Future<void> disconnect();
     Future<void> startScan();
     Future<void> stopScan();
+    Future<bool> reconnectLastDevice();
     
     Stream<SensorPacket> get stream;
     Stream<List<ScanResult>> get scanStream;
