@@ -1,6 +1,6 @@
 import 'dart:convert';
-import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
+import 'package:vigil_collector/logger.dart';
 import 'sensor_packet.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 
@@ -103,8 +103,52 @@ class FirestoreUploader {
             'online': true,    
           }
         }, SetOptions(merge: true));
+    }
 
-        
+    Future<void> uploadBatch({required String uid, required String wid, required List<SensorPacket> packets}) async {
+      if (packets.isEmpty) return;
+
+      final batch = _db.batch();
+      final telemetryCol = _db.collection('users').doc(uid).collection('wearables').doc(wid).collection('telemetry');
+
+      for (final p in packets) {
+        final ref = telemetryCol.doc();
+
+        batch.set(ref, {
+          'ts': FieldValue.serverTimestamp(),
+          'heartRate': p.heartRate,
+          'hrv': p.hrv,
+          'temp': p.temp,
+          'motion': p.motion,
+          'sleepQuality': p.sleepQuality,
+          'sleepTime': p.sleepTime,
+        });
+      }
+
+      final last = packets.last;
+
+      // single update
+      batch.set(_db.collection('users').doc(uid), {
+        'latestMetrics': {
+          'ts': FieldValue.serverTimestamp(),
+          'heartRate': last.heartRate,
+          'hrv': last.hrv,
+          'temp': last.temp,
+          'motion': last.motion,
+          'sleepQuality': last.sleepQuality,
+          'sleepTime': last.sleepTime,
+        }
+      }, SetOptions(merge: true));
+      batch.set(_db.collection('wearables').doc(wid), {
+        'status': {
+          'online': true,
+          'lastSeen': FieldValue.serverTimestamp(),
+        }
+      }, SetOptions(merge: true));
+      await batch.commit();
+
+      // run danger detection on last sample only
+      _evalRealtimeTelemetry(uid, wid, last);
     }
 
     Future<void> ingestTelemetry({required String uid, required String wid, required SensorPacket packet}) async {
@@ -116,9 +160,9 @@ class FirestoreUploader {
     }
 
     void _evalRealtimeTelemetry(String uid, String wid, SensorPacket packet) {
-        final double hr = (packet.heartRate ?? 0).toDouble();
-        final double hrv = (packet.hrv ?? 0).toDouble();
-        final double temp = (packet.temp ?? 0).toDouble();
+        final hr = packet.heartRate;
+        final hrv = packet.hrv;
+        final temp = packet.temp;
 
         // Immediate Danger Thresholds (Conservative)
         if (hr >= 140) {
@@ -153,7 +197,7 @@ class FirestoreUploader {
                 _cachedOrgId = orgId;
                 _lastCachedUid = uid;
             } catch (e) {
-                debugPrint("[_emitNotification] Error fetching user orgId: $e");
+                logStep("UPLOAD", "Error fetching user orgId: $e");
                 name = uid;
             }
         }
@@ -196,24 +240,7 @@ class FirestoreUploader {
         try {
             await batch.commit();
         } catch (e) {
-            print("[_emitNotifications] Failed to emit notifications: $e");
+            logStep("UPLOAD", "Failed to emit notifications: $e");
         }
     }
-
-  Future<void> ensureWearableExists(String uid, String wid) async {
-    final ref = _db.collection('wearables').doc(wid);
-    final snap = await ref.get();
-
-    if (!snap.exists) {
-      await ref.set({
-        'wearableId': wid,
-        'assignedTo': uid,
-        'createdAt': FieldValue.serverTimestamp(),
-        'status': {
-          'online': true,
-          'lastSeen': FieldValue.serverTimestamp(),
-        }
-      }, SetOptions(merge: true));
-    }
-  }
 }

@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:vigil_collector/data/sensor_packet.dart';
+import 'package:vigil_collector/data/wearable_storage.dart';
 import 'package:vigil_collector/logger.dart';
 import 'package:vigil_collector/wearables/wearable_service.dart';
 
@@ -45,13 +46,22 @@ class WearableManager {
     if (_busy) return;
     _busy = true;
 
-    final success = await ble.connect();
-    if (success) {
-      _onConnected();
-    } else {
-      await startScan();
+    final lastId = await WearableStorage.getLastDevice();
+
+    if (lastId != null) {
+      final systemDevices = await FlutterBluePlus.connectedDevices;
+      final match = systemDevices.where((d) => d.remoteId.str == lastId).firstOrNull;
+
+      if (match != null) {
+        await ble.connectToDevice(match);
+        _onConnected();
+        _busy = false;
+        return;
+      }
     }
 
+    // scan fallback
+    await startScan();
     _busy = false;
   }
 

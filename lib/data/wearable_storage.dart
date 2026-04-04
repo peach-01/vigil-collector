@@ -17,4 +17,14 @@ class WearableStorage {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove(_key);
   }
+
+  static Future<void> saveLastDevice(String id) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString("last_device", id);
+  }
+
+  static Future<String?> getLastDevice() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString("last_device");
+  }
 }

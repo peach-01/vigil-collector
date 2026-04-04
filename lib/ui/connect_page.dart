@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:vigil_collector/data/data_pipeline.dart';
 import 'package:vigil_collector/logger.dart';
 
 import 'package:vigil_collector/ui/widgets/connected_view.dart';
@@ -14,10 +15,6 @@ import '../wearables/ble_service.dart';
 import '../wearables/mock_wearable_service.dart';
 import '../data/uploader.dart';
 import '../data/sensor_packet.dart';
-
-//import 'package:vigil_collector/data/wearable_storage.dart';
-//import 'package:vigil_collector/logger.dart';
-
 
 class ConnectWearablePage extends StatefulWidget {
     final String uid;
@@ -36,6 +33,8 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
     
     DateTime? lastUpload;
     SensorPacket? lastPacket;
+
+    DataPipeline? pipeline;
 
     WearableState mode = WearableState.idle;
     List<ScanResult> devices = [];
@@ -71,6 +70,9 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
                 type: "heart_rate_monitor",
               );
 
+              pipeline?.dispose();
+              pipeline = DataPipeline(uploader: uploader, uid: widget.uid, wid: wid);
+
               _registered = true;
               logStep("CONNECT", "Wearable registered: $wid");
             } catch (e) {
@@ -90,11 +92,7 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
 
       dataSub = manager.data.listen((packet) async {
         lastPacket = packet;
-
-        final wid = manager.ble.deviceId;
-        if (wid == "unknown_device") return;
-
-        unawaited(uploader.ingestTelemetry(uid: widget.uid, wid: manager.ble.deviceId, packet: packet));
+        pipeline?.add(packet);
 
         setState(() {
           lastUpload = DateTime.now();
