@@ -114,9 +114,10 @@ class WearableManager {
     _watchDog?.cancel();
 
     _watchDog = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (DateTime.now().difference(_lastDataTime) > const Duration(seconds: 40)) {
+      if (DateTime.now().difference(_lastDataTime) > const Duration(seconds: 30)) {
         logStep("WATCHDOG", "Timeout - no data");
         _state.add(WearableState.timeout);
+        reconnect();
       }
     });
   }

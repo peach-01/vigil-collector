@@ -57,7 +57,7 @@ class BleWearableService implements WearableService {
       );
 
       _listenConnectState();
-      unawaited(_setup());
+      await _setup();
 
       await WearableStorage.saveLastDevice(_device!.remoteId.str);
 
@@ -72,10 +72,26 @@ class BleWearableService implements WearableService {
 
   void _listenConnectState() {
     _connectSub?.cancel();
-    _connectSub = _device!.connectionState.listen((state) {
+    _connectSub = _device!.connectionState.listen((state) async {
       if (state == BluetoothConnectionState.disconnected) {
         logStep("BLE", "Disconnected");
+
+        final lastId = _device?.remoteId.str;
+
         _cleanupConnection();
+
+        // auto-reconnect
+        if (lastId != null) {
+          await Future.delayed(const Duration(seconds: 2));
+
+          try {
+            _device = BluetoothDevice.fromId(lastId);
+            logStep("BLE", "Auto-reconnecting");
+            await connect();
+          } catch (e) {
+            logStep("BLE", "Auto-reconnect FAIL: $e");
+          }
+        }
       }
     });
   }
@@ -113,7 +129,6 @@ class BleWearableService implements WearableService {
   }
 
   void _cleanupConnection() {
-    _device = null;
     _protocol = UnknownProtocol();
 
     _notifyChars.clear();
@@ -240,8 +255,9 @@ class BleWearableService implements WearableService {
 
     // Step 4: maintain stream
     _keepAliveTimer?.cancel();
-    _keepAliveTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
+    _keepAliveTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
       await _write(CommandBuilder.packet(0xA0, [0x03]));
+      await _write(CommandBuilder.packet(0xA0, [0xFF]));
     });
   }
 
