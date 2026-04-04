@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
-import 'package:vigil_collector/logger.dart';
 
 class LoginPage extends StatefulWidget {
     const LoginPage({super.key});
@@ -27,8 +26,6 @@ class _LoginPageState extends State<LoginPage> {
 
     @override
     Widget build(BuildContext context) {
-      //logStep("LOGIN", "LOGIN PAGE BUILD CALLED");
-
       return Scaffold(
           appBar: AppBar(
               title: Row(
