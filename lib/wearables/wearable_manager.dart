@@ -26,9 +26,13 @@ class WearableManager {
   StreamSubscription? _dataSub;
   StreamSubscription? _scanSub;
 
+  bool _foundAnyDevice = false;
+
+  Timer? _scanTimeout;
   Timer? _watchDog;
 
   DateTime _lastDataTime = DateTime.now();
+  DateTime _lastForward = DateTime.fromMillisecondsSinceEpoch(0);
   DateTime? _connectedAt;
 
   static const _initGrace = Duration(seconds: 15);
@@ -76,6 +80,8 @@ class WearableManager {
   }
 
   void _onConnected() async {
+    _scanTimeout?.cancel();
+
     await ble.stopScan();
 
     _connectedAt = DateTime.now();
@@ -90,19 +96,28 @@ class WearableManager {
     // ----------- SCAN ------------
 
   Future<void> startScan() async {
-    await ble.disconnect();
+    if (_state != WearableState.connected) {
+      await ble.disconnect();
+    }
+    
+    _foundAnyDevice = false;
 
     _state.add(WearableState.scanning);
     await ble.startScan();
 
     _scanSub?.cancel();
-    _scanSub = ble.scanStream.listen(_devices.add);
+    _scanSub = ble.scanStream.listen((devices) {
+      if (devices.isNotEmpty) {
+        _foundAnyDevice = true;
+      }
+      _devices.add(devices);
+    });
 
-    Future.delayed(const Duration(seconds: 15), () {
-      if (DateTime.now().difference(_connectedAt!) < Duration(seconds: 15)) {
+    _scanTimeout?.cancel();
+    _scanTimeout = Timer(const Duration(seconds: 12), () {
+      if (!_foundAnyDevice) {
         _state.add(WearableState.notFound);
       }
-      
     });
   }
 
@@ -110,9 +125,6 @@ class WearableManager {
 
   void _listenToData() {
     _dataSub?.cancel();
-
-    DateTime _lastForward = DateTime.fromMillisecondsSinceEpoch(0);
-
     _dataSub = ble.stream.listen((p) {
       final now = DateTime.now();
 
