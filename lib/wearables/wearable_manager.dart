@@ -108,8 +108,15 @@ class WearableManager {
   void _listenToData() {
     _dataSub?.cancel();
 
+    DateTime _lastForward = DateTime.fromMillisecondsSinceEpoch(0);
+
     _dataSub = ble.stream.listen((p) {
-      _lastDataTime = DateTime.now();
+      final now = DateTime.now();
+
+      if (now.difference(_lastForward) < const Duration(seconds: 10)) return;
+      _lastForward = now;
+
+      _lastDataTime = now;
       _data.add(p);
       _state.add(WearableState.streaming);
     });

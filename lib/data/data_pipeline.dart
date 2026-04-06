@@ -16,9 +16,9 @@ class DataPipeline {
   Timer? _flushTimer;
   bool _uploading = false;
 
-  static const int batchSize = 20;
+  static const int batchSize = 10;
   static const int maxQueueSize = 500;
-  static const Duration flushInterval = Duration(seconds: 10);
+  static const Duration flushInterval = Duration(seconds: 30);
 
   DataPipeline({required this.uploader, required this.uid, required this.wid}) {
     _startAutoFlush();

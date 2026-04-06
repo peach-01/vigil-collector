@@ -19,7 +19,9 @@ class VigilProtocol implements BleProtocol {
   final List<int> _buffer = [];
 
   DateTime _lastEmit = DateTime.fromMillisecondsSinceEpoch(0);
-  static const _emitInterval = Duration(seconds: 10);
+  DateTime _lastAbnormal = DateTime.fromMillisecondsSinceEpoch(0);
+
+  Duration _currentInterval = const Duration(seconds: 10);
 
   @override
   void onData(List<int> data, StreamController<SensorPacket> out) {
@@ -44,10 +46,6 @@ class VigilProtocol implements BleProtocol {
   }
 
   void _parseFrame(List<int> frame, StreamController<SensorPacket> out) {
-    final now = DateTime.now();
-    if (now.difference(_lastEmit) < _emitInterval) return;
-    _lastEmit = now;
-    
     if (frame.length < 6) return;
 
     final type = frame[3];
@@ -80,6 +78,12 @@ class VigilProtocol implements BleProtocol {
         return;
     }
 
+    final now = DateTime.now();
+    _updateInterval(hr: hr, temp: temp, hrv: hrv, motion: motion);
+
+    if (now.difference(_lastEmit) < _currentInterval) return;
+    _lastEmit = now;
+
     //if (kDebugMode) logStep("BLE", "TYPE=$type VALUE=${frame[5]} FULL=$frame");
     out.add(SensorPacket(
       heartRate: hr, 
@@ -90,9 +94,27 @@ class VigilProtocol implements BleProtocol {
       sleepTime: 0
     ));
   }
+
+  void _updateInterval({required double hr, required double temp, required double hrv, required double motion}) {
+    final now = DateTime.now();
+    final abnormal = _isAbnormal(hr: hr, temp: temp, hrv: hrv, motion: motion);
+    if (abnormal) {
+      _lastAbnormal = now;
+    }
+
+    final stillElevated = now.difference(_lastAbnormal) < Duration(seconds: 30);
+
+    // fast mode vs normal mode
+    _currentInterval = stillElevated ? const Duration(seconds: 2) : const Duration(seconds: 12);
+  }
 }
 
 class HeartRateProtocol implements BleProtocol {
+  DateTime _lastEmit = DateTime.fromMillisecondsSinceEpoch(0);
+  DateTime _lastAbnormal = DateTime.fromMillisecondsSinceEpoch(0);
+
+  Duration _currentInterval = const Duration(seconds: 10);
+
   @override
   void onData(List<int> data, StreamController<SensorPacket> out) {
     if (data.length < 2) return;
@@ -108,6 +130,12 @@ class HeartRateProtocol implements BleProtocol {
       hr = data[1]; // fallback
     }
 
+    final now = DateTime.now();
+    _updateInterval(hr.toDouble());
+
+    if (now.difference(_lastEmit) < _currentInterval) return;
+    _lastEmit = now;
+
     if (kDebugMode) logStep("HR", "RAW HR: $data");
     out.add(SensorPacket(
       heartRate: hr.toDouble(), 
@@ -118,4 +146,24 @@ class HeartRateProtocol implements BleProtocol {
       sleepTime: 0,
     ));
   }
+
+  void _updateInterval(double hr) {
+    final now = DateTime.now();
+    final abnormal = (hr >= 120 || hr <= 45);
+    if (abnormal) {
+      _lastAbnormal = now;
+    }
+
+    final stillElevated = now.difference(_lastAbnormal) < Duration(seconds: 30);
+    _currentInterval = stillElevated ? const Duration(seconds: 2) : const Duration(seconds: 12);
+  }
+}
+
+bool _isAbnormal({required double hr, required double temp, required double hrv, required double motion}) {
+  if (hr >= 120 || hr <= 45) return true;
+  if (temp >= 38.0) return true;
+  if (hrv > 0 && hrv < 20) return true;
+  if (motion > 20) return true;   // adjust later based on scale
+
+  return false;
 }
