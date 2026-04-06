@@ -98,8 +98,11 @@ class WearableManager {
     _scanSub?.cancel();
     _scanSub = ble.scanStream.listen(_devices.add);
 
-    Future.delayed(const Duration(seconds: 12), () {
-      _state.add(WearableState.notFound);
+    Future.delayed(const Duration(seconds: 15), () {
+      if (DateTime.now().difference(_connectedAt!) < Duration(seconds: 15)) {
+        _state.add(WearableState.notFound);
+      }
+      
     });
   }
 
