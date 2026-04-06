@@ -18,6 +18,9 @@ class UnknownProtocol implements BleProtocol {
 class VigilProtocol implements BleProtocol {
   final List<int> _buffer = [];
 
+  DateTime _lastEmit = DateTime.fromMillisecondsSinceEpoch(0);
+  static const _emitInterval = Duration(seconds: 10);
+
   @override
   void onData(List<int> data, StreamController<SensorPacket> out) {
     _buffer.addAll(data);
@@ -41,6 +44,10 @@ class VigilProtocol implements BleProtocol {
   }
 
   void _parseFrame(List<int> frame, StreamController<SensorPacket> out) {
+    final now = DateTime.now();
+    if (now.difference(_lastEmit) < _emitInterval) return;
+    _lastEmit = now;
+    
     if (frame.length < 6) return;
 
     final type = frame[3];

@@ -29,6 +29,10 @@ class WearableManager {
   Timer? _watchDog;
 
   DateTime _lastDataTime = DateTime.now();
+  DateTime? _connectedAt;
+
+  static const _initGrace = Duration(seconds: 15);
+
   bool _busy = false;
 
   WearableManager(this.ble);
@@ -74,6 +78,9 @@ class WearableManager {
   void _onConnected() async {
     await ble.stopScan();
 
+    _connectedAt = DateTime.now();
+    _lastDataTime = DateTime.now();
+
     _state.add(WearableState.connected);
 
     _listenToData();
@@ -114,9 +121,13 @@ class WearableManager {
     _watchDog?.cancel();
 
     _watchDog = Timer.periodic(const Duration(seconds: 5), (_) async {
-      final diff = DateTime.now().difference(_lastDataTime);
+      final now = DateTime.now();
 
-      if (diff > const Duration(seconds: 30)) {
+      // skip watchdog during init connect window
+      if (_connectedAt != null && now.difference(_connectedAt!) < _initGrace) return;
+
+      final diff = now.difference(_lastDataTime);
+      if (diff > const Duration(seconds: 40)) {
         if (kDebugMode) logStep("WATCHDOG", "Timeout - reconnecting");
         _state.add(WearableState.timeout);
         await reconnect();

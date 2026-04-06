@@ -18,7 +18,7 @@ class DataPipeline {
 
   static const int batchSize = 20;
   static const int maxQueueSize = 500;
-  static const Duration flushInterval = Duration(seconds: 5);
+  static const Duration flushInterval = Duration(seconds: 10);
 
   DataPipeline({required this.uploader, required this.uid, required this.wid}) {
     _startAutoFlush();
@@ -44,6 +44,8 @@ class DataPipeline {
       while (_queue.isNotEmpty && _batch.length < batchSize) {
         _batch.add(_queue.removeFirst());
       }
+
+      if (_batch.isEmpty) return;
 
       await uploader.uploadBatch(uid: uid, wid: wid, packets: List.from(_batch));
       _batch.clear();

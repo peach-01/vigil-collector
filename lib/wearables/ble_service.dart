@@ -27,8 +27,6 @@ class BleWearableService implements WearableService {
   Timer? _keepAliveTimer;
 
   DateTime _lastWrite = DateTime.fromMillisecondsSinceEpoch(0);
-  DateTime _lastEmit = DateTime.fromMillisecondsSinceEpoch(0);
-  static const _emitInterval = Duration(seconds: 12);
 
   bool _isStreaming = false;
   bool _isConnecting = false;
@@ -268,8 +266,10 @@ class BleWearableService implements WearableService {
 
     // Step 4: maintain stream
     _keepAliveTimer?.cancel();
-    _keepAliveTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
+    _keepAliveTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
       await _write(CommandBuilder.packet(0xA0, [0x03]));
+      await Future.delayed(const Duration(milliseconds: 100));
+      await _write(CommandBuilder.packet(0xA0, [0xFF]));
     });
   }
 
@@ -295,13 +295,6 @@ class BleWearableService implements WearableService {
 
   void _onNotify(List<int> data) {
     if (!_dataController.hasListener) return;
-
-    final now = DateTime.now();
-    if (now.difference(_lastEmit) < _emitInterval) {
-      return;   // drops extra packets
-    }
-
-    _lastEmit = now;
 
     // protocol fallback
     if (_protocol is UnknownProtocol && data.isNotEmpty && data.first == 0x78) {

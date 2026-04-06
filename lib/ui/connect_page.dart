@@ -98,7 +98,9 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
 
       dataSub = manager.data.listen((packet) async {
         lastPacket = packet;
-        pipeline?.add(packet);
+        if (_isValidPacket(packet)) {
+          pipeline?.add(packet);
+        }
 
         if (mounted) {
           setState(() => lastUpload = DateTime.now());
@@ -112,16 +114,20 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
       }
     }
 
+    bool _isValidPacket(SensorPacket p) {
+      return p.heartRate > 0 || p.temp > 0 || p.motion > 0 || p.hrv > 0;
+    }
+
     bool _isVigilWearable(ScanResult r) {
-    final name = r.device.name.toUpperCase();
-    final adv = r.advertisementData.advName.toUpperCase();
-    return (
-      name.contains("VIGIL") || adv.contains("VIGIL") ||
-      name.contains("H303") || adv.contains("H303") ||
-      name.contains("H6") || adv.contains("H6") ||
-      name.contains("HW706") || adv.contains("HW706")
-    );
-  }
+      final name = r.device.name.toUpperCase();
+      final adv = r.advertisementData.advName.toUpperCase();
+      return (
+        name.contains("VIGIL") || adv.contains("VIGIL") ||
+        name.contains("H303") || adv.contains("H303") ||
+        name.contains("H6") || adv.contains("H6") ||
+        name.contains("HW706") || adv.contains("HW706")
+      );
+    }
 
 
     Future<void> _logout() async {
