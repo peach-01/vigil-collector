@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'package:async/async.dart';
+//import 'package:async/async.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:vigil_collector/data/wearable_storage.dart';
@@ -76,7 +76,7 @@ class BleWearableService implements WearableService {
     _connectSub?.cancel();
     _connectSub = _device!.connectionState.listen((state) async {
       if (state == BluetoothConnectionState.disconnected) {
-        if (kDebugMode) logStep("BLE", "Disconnected");
+        if (kDebugMode) logStep("BLE", "STATE: $state - Reason: ${_device!.disconnectReason}");
 
         final lastId = _device?.remoteId.str;
 
@@ -209,12 +209,13 @@ class BleWearableService implements WearableService {
         // protocol selection
         if (uuid.contains("2a37")) {
           _protocol = HeartRateProtocol();
+          _notifyChars.add(c);
         }
 
         // notify
-        if (props.notify || props.indicate) {
+        /*if (props.notify || props.indicate) {
           _notifyChars.add(c);
-        }
+        }*/
 
         // write
         if (_writeChar == null && (props.writeWithoutResponse || props.write)) {
@@ -243,7 +244,8 @@ class BleWearableService implements WearableService {
       }
     }
 
-    _notifySub = StreamGroup.merge(streams).listen(_onNotify);
+    //_notifySub = StreamGroup.merge(streams).listen(_onNotify);
+    _notifySub = _notifyChars.first.value.listen(_onNotify);
   }
 
   // ----------- STREAMING ------------
@@ -266,17 +268,17 @@ class BleWearableService implements WearableService {
     await Future.delayed(const Duration(milliseconds: 500));
 
     // Step 4: maintain stream
-    _keepAliveTimer?.cancel();
-    _keepAliveTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
+    /*_keepAliveTimer?.cancel();
+    _keepAliveTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
       await _write(CommandBuilder.packet(0xA0, [0x03]));
-    });
+    });*/
   }
 
   Future<void> _write(Uint8List packet) async {
     if (_writeChar == null) return;
 
     final now = DateTime.now();
-    if (now.difference(_lastWrite).inMilliseconds < 400) return;
+    if (now.difference(_lastWrite).inMilliseconds < 600) return;
     _lastWrite = now;
 
     try {
