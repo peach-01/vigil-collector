@@ -120,4 +120,4 @@ flutter:
 flutter_launcher_icons:
   android: true
   ios: true
-  image_path: "assets/VIGIL_logo_white.png"
+  image_path: "assets/VIGIL-logo_white-on-black.png"
