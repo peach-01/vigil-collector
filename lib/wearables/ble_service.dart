@@ -267,7 +267,7 @@ class BleWearableService implements WearableService {
 
     // Step 4: maintain stream
     _keepAliveTimer?.cancel();
-    _keepAliveTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
+    _keepAliveTimer = Timer.periodic(const Duration(seconds: 3), (_) async {
       await _write(CommandBuilder.packet(0xA0, [0x03]));
     });
   }
