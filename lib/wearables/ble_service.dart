@@ -264,12 +264,9 @@ class BleWearableService implements WearableService {
 
     // Step 3: enable sensor system
     await _write(CommandBuilder.packet(0xA0, [0xFF]));
+    await Future.delayed(const Duration(milliseconds: 500));
 
     // Step 4: maintain stream
-    /*_keepAliveTimer?.cancel();
-    _keepAliveTimer = Timer.periodic(const Duration(seconds: 20), (_) async {
-      await _write(CommandBuilder.packet(0xA0, [0x03]));
-    });*/
     if (DateTime.now().difference(_lastEmit) > Duration(seconds: 5)) {
       await _write(CommandBuilder.packet(0xA0, [0x03]));
     }
