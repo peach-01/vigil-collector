@@ -1,16 +1,13 @@
 import 'dart:async';
 import 'package:async/async.dart';
 import 'package:flutter/foundation.dart';
-import 'dart:typed_data';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:vigil_collector/data/wearable_storage.dart';
 import 'package:vigil_collector/logger.dart';
 import 'package:vigil_collector/wearables/cmd_builder.dart';
 import '../data/sensor_packet.dart';
 import 'package:vigil_collector/wearables/protocols.dart';
-
 import 'wearable_service.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 
 class BleWearableService implements WearableService {
   BluetoothDevice? _device;
@@ -28,7 +25,10 @@ class BleWearableService implements WearableService {
   final _scanController = StreamController<List<ScanResult>>.broadcast();
 
   Timer? _keepAliveTimer;
+
   DateTime _lastWrite = DateTime.fromMillisecondsSinceEpoch(0);
+  DateTime _lastEmit = DateTime.fromMillisecondsSinceEpoch(0);
+  static const _emitInterval = Duration(seconds: 12);
 
   bool _isStreaming = false;
   bool _isConnecting = false;
@@ -268,7 +268,7 @@ class BleWearableService implements WearableService {
 
     // Step 4: maintain stream
     _keepAliveTimer?.cancel();
-    _keepAliveTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
+    _keepAliveTimer = Timer.periodic(const Duration(seconds: 10), (_) async {
       await _write(CommandBuilder.packet(0xA0, [0x03]));
     });
   }
@@ -295,6 +295,13 @@ class BleWearableService implements WearableService {
 
   void _onNotify(List<int> data) {
     if (!_dataController.hasListener) return;
+
+    final now = DateTime.now();
+    if (now.difference(_lastEmit) < _emitInterval) {
+      return;   // drops extra packets
+    }
+
+    _lastEmit = now;
 
     // protocol fallback
     if (_protocol is UnknownProtocol && data.isNotEmpty && data.first == 0x78) {

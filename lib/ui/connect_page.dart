@@ -113,10 +113,15 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
     }
 
     bool _isVigilWearable(ScanResult r) {
-      final name = r.device.name.toUpperCase();
-      final adv = r.advertisementData.advName.toUpperCase();
-      return name.contains("VIGIL") || adv.contains("VIGIL") || name.contains("DS05") || adv.contains("DS05");
-    }
+    final name = r.device.name.toUpperCase();
+    final adv = r.advertisementData.advName.toUpperCase();
+    return (
+      name.contains("VIGIL") || adv.contains("VIGIL") ||
+      name.contains("H303") || adv.contains("H303") ||
+      name.contains("H6") || adv.contains("H6") ||
+      name.contains("HW706") || adv.contains("HW706")
+    );
+  }
 
 
     Future<void> _logout() async {
