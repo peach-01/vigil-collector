@@ -123,9 +123,9 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
       final adv = r.advertisementData.advName.toUpperCase();
       return (
         name.contains("VIGIL") || adv.contains("VIGIL") ||
-        name.contains("H303") || adv.contains("H303") ||
-        name.contains("H6") || adv.contains("H6") ||
-        name.contains("HW706") || adv.contains("HW706")
+        name.startsWith("H303") || adv.startsWith("H303") ||
+        name.startsWith("H6") || adv.startsWith("H6") ||
+        name.startsWith("HW706") || adv.startsWith("HW706")
       );
     }
 
