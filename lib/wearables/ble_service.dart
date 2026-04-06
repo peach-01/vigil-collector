@@ -27,6 +27,7 @@ class BleWearableService implements WearableService {
   Timer? _keepAliveTimer;
 
   DateTime _lastWrite = DateTime.fromMillisecondsSinceEpoch(0);
+  DateTime _lastEmit = DateTime.fromMillisecondsSinceEpoch(0);
 
   bool _isStreaming = false;
   bool _isConnecting = false;
@@ -84,7 +85,7 @@ class BleWearableService implements WearableService {
 
         // auto-reconnect
         if (lastId != null) {
-          await Future.delayed(const Duration(seconds: 2));
+          await Future.delayed(const Duration(seconds: 4));
 
           try {
             _device = BluetoothDevice.fromId(lastId);
@@ -265,19 +266,20 @@ class BleWearableService implements WearableService {
     await _write(CommandBuilder.packet(0xA0, [0xFF]));
 
     // Step 4: maintain stream
-    _keepAliveTimer?.cancel();
-    _keepAliveTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
+    /*_keepAliveTimer?.cancel();
+    _keepAliveTimer = Timer.periodic(const Duration(seconds: 20), (_) async {
       await _write(CommandBuilder.packet(0xA0, [0x03]));
-      await Future.delayed(const Duration(milliseconds: 100));
-      await _write(CommandBuilder.packet(0xA0, [0xFF]));
-    });
+    });*/
+    if (DateTime.now().difference(_lastEmit) > Duration(seconds: 5)) {
+      await _write(CommandBuilder.packet(0xA0, [0x03]));
+    }
   }
 
   Future<void> _write(Uint8List packet) async {
     if (_writeChar == null) return;
 
     final now = DateTime.now();
-    if (now.difference(_lastWrite).inMilliseconds < 150) return;
+    if (now.difference(_lastWrite).inMilliseconds < 400) return;
     _lastWrite = now;
 
     try {
