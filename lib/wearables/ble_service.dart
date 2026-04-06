@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'package:async/async.dart';
+import 'package:flutter/foundation.dart';
 import 'dart:typed_data';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:vigil_collector/data/wearable_storage.dart';
@@ -27,6 +28,7 @@ class BleWearableService implements WearableService {
   final _scanController = StreamController<List<ScanResult>>.broadcast();
 
   Timer? _keepAliveTimer;
+  DateTime _lastWrite = DateTime.fromMillisecondsSinceEpoch(0);
 
   bool _isStreaming = false;
   bool _isConnecting = false;
@@ -50,8 +52,10 @@ class BleWearableService implements WearableService {
     _isConnecting = true;
 
     try {
+      await _ensureAdapterOn();
+
       await _device!.connect(
-        timeout: const Duration(seconds: 5),
+        timeout: const Duration(seconds: 8),
         autoConnect: false,
         license: License.free,
       );
@@ -63,7 +67,7 @@ class BleWearableService implements WearableService {
 
       return true;
     } catch (e) {
-      logStep("BLE", "Connect FAIL: $e");
+      if (kDebugMode) logStep("BLE", "Connect FAIL: $e");
       return false;
     } finally {
       _isConnecting = false;
@@ -74,7 +78,7 @@ class BleWearableService implements WearableService {
     _connectSub?.cancel();
     _connectSub = _device!.connectionState.listen((state) async {
       if (state == BluetoothConnectionState.disconnected) {
-        logStep("BLE", "Disconnected");
+        if (kDebugMode) logStep("BLE", "Disconnected");
 
         final lastId = _device?.remoteId.str;
 
@@ -86,14 +90,18 @@ class BleWearableService implements WearableService {
 
           try {
             _device = BluetoothDevice.fromId(lastId);
-            logStep("BLE", "Auto-reconnecting");
+            if (kDebugMode) logStep("BLE", "Auto-reconnecting");
             await connect();
           } catch (e) {
-            logStep("BLE", "Auto-reconnect FAIL: $e");
+            if (kDebugMode) logStep("BLE", "Auto-reconnect FAIL: $e");
           }
         }
       }
     });
+  }
+
+  Future<void> _ensureAdapterOn() async {
+    await FlutterBluePlus.adapterState.where((s) => s == BluetoothAdapterState.on).first;
   }
 
   @override
@@ -109,10 +117,10 @@ class BleWearableService implements WearableService {
 
     try {
       _device = BluetoothDevice.fromId(wid);
-      logStep("BLE", "Reconnecting to $wid");
+      if (kDebugMode) logStep("BLE", "Reconnecting to $wid");
       return await connect();
     } catch (e) {
-      logStep("BLE", "Reconnect FAIL: $e");
+      if (kDebugMode) logStep("BLE", "Reconnect FAIL: $e");
       return false;
     }
   }
@@ -125,7 +133,7 @@ class BleWearableService implements WearableService {
     await d?.disconnect();
     await WearableStorage.clear();
 
-    logStep("BLE", "Disconnect SUCCESS");
+    if (kDebugMode) logStep("BLE", "Disconnect SUCCESS");
   }
 
   void _cleanupConnection() {
@@ -185,7 +193,7 @@ class BleWearableService implements WearableService {
         await _startStreaming();
       }
     } catch (e) {
-      logStep("BLE", "Setup FAIL: $e");
+      if (kDebugMode) logStep("BLE", "Setup FAIL: $e");
     }
   }
 
@@ -231,9 +239,9 @@ class BleWearableService implements WearableService {
       try {
         await c.setNotifyValue(true);
         streams.add(c.value);
-        logStep("BLE", "LISTENING: ${c.uuid}");
+        if (kDebugMode) logStep("BLE", "LISTENING: ${c.uuid}");
       } catch (e) {
-        logStep("BLE", "NOTIFY FAIL: ${c.uuid} - $e");
+        if (kDebugMode) logStep("BLE", "NOTIFY FAIL: ${c.uuid} - $e");
       }
     }
 
@@ -260,14 +268,17 @@ class BleWearableService implements WearableService {
 
     // Step 4: maintain stream
     _keepAliveTimer?.cancel();
-    _keepAliveTimer = Timer.periodic(const Duration(seconds: 2), (_) async {
+    _keepAliveTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
       await _write(CommandBuilder.packet(0xA0, [0x03]));
-      await _write(CommandBuilder.packet(0xA0, [0xFF]));
     });
   }
 
   Future<void> _write(Uint8List packet) async {
     if (_writeChar == null) return;
+
+    final now = DateTime.now();
+    if (now.difference(_lastWrite).inMilliseconds < 150) return;
+    _lastWrite = now;
 
     try {
       await _writeChar!.write(packet, withoutResponse: true);
@@ -275,7 +286,7 @@ class BleWearableService implements WearableService {
       try {
         await _writeChar!.write(packet, withoutResponse: false);
       } catch (e) {
-        logStep("BLE", "WRITE FAIL: $e");
+        if (kDebugMode) logStep("BLE", "WRITE FAIL: $e");
       }
     }
   }
@@ -293,7 +304,7 @@ class BleWearableService implements WearableService {
     try {
       _protocol.onData(data, _dataController);
     } catch (e) {
-      logStep("BLE", "PARSE ERROR: $e");
+      if (kDebugMode) logStep("BLE", "PARSE ERROR: $e");
     }
   }
 }

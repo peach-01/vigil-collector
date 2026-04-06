@@ -1,5 +1,5 @@
 import 'dart:async';
-
+import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:vigil_collector/data/sensor_packet.dart';
 import 'package:vigil_collector/logger.dart';
@@ -113,11 +113,13 @@ class WearableManager {
   void _startWatchDog() {
     _watchDog?.cancel();
 
-    _watchDog = Timer.periodic(const Duration(seconds: 5), (_) {
-      if (DateTime.now().difference(_lastDataTime) > const Duration(seconds: 30)) {
-        logStep("WATCHDOG", "Timeout - no data");
+    _watchDog = Timer.periodic(const Duration(seconds: 5), (_) async {
+      final diff = DateTime.now().difference(_lastDataTime);
+
+      if (diff > const Duration(seconds: 30)) {
+        if (kDebugMode) logStep("WATCHDOG", "Timeout - reconnecting");
         _state.add(WearableState.timeout);
-        reconnect();
+        await reconnect();
       }
     });
   }
@@ -126,14 +128,19 @@ class WearableManager {
 
   Future<bool> reconnect() async {
     if (_busy) return false;
+    _busy = true;
 
-    _state.add(WearableState.connecting);
-
-    await ble.disconnect();
-    await Future.delayed(const Duration(seconds: 1));
-      
-    await connect();
-    return true;
+    try {
+      await ble.disconnect();
+      await Future.delayed(const Duration(seconds: 2));
+        
+      return await connect();
+    } catch (e) {
+      _state.add(WearableState.error);
+      return false;
+    } finally {
+      _busy = false;
+    }
   } 
 
   Future<void> dispose() async {

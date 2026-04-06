@@ -29,6 +29,7 @@ class ScanList extends StatelessWidget {
       );
     }
     devices.sort((a, b) => b.rssi.compareTo(a.rssi));
+    //final top3 = devices.take(3).toList();      // priotize best signal
 
     return ListView.builder(
       itemCount: devices.length,

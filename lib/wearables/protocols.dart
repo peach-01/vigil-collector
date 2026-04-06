@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:vigil_collector/logger.dart';
 import '../data/sensor_packet.dart';
+import 'package:flutter/foundation.dart';
 
 
 abstract class BleProtocol {
@@ -10,7 +11,7 @@ abstract class BleProtocol {
 class UnknownProtocol implements BleProtocol {
   @override
   void onData(List<int> data, StreamController<SensorPacket> out) {
-    logStep("BLE", "RAW: $data");
+    if (kDebugMode) logStep("BLE", "RAW: $data");
   }
 }
 
@@ -22,7 +23,7 @@ class VigilProtocol implements BleProtocol {
     _buffer.addAll(data);
 
     while (_buffer.length >= 3) {
-      if (_buffer[0] != 0x78) {
+      if (_buffer.first != 0x78) {
         _buffer.removeAt(0);
         continue;
       }
@@ -32,7 +33,7 @@ class VigilProtocol implements BleProtocol {
 
       if (_buffer.length < totalLen) break;
 
-      final frame = _buffer.sublist(0, totalLen);
+      final frame = List<int>.from(_buffer.take(totalLen));
       _buffer.removeRange(0, totalLen);
 
       _parseFrame(frame, out);
@@ -43,13 +44,14 @@ class VigilProtocol implements BleProtocol {
     if (frame.length < 6) return;
 
     final type = frame[3];
+    final val = frame.length > 5 ? frame[5] : 0;
 
     double hr = 0, motion = 0, temp = 0, hrv = 0;
 
     switch (type) {
       case 0x07: // Heart Rate
       case 0x0B:  // Secondary HR? (resting/sleep)
-        hr = frame[5].toDouble();
+        hr = val.toDouble();
         break;
 
       case 0x0D: // Motion
@@ -59,18 +61,19 @@ class VigilProtocol implements BleProtocol {
         break;
 
       case 0x03: // Temp
-        temp = frame[5] / 10.0;
+        temp = val / 10.0;
         break;
 
       case 0x15:  // HRV
-        hrv = frame[5].toDouble();
+        hrv = val.toDouble();
         break;
 
       default:
-        logStep("BLE", "UNKOWN TYPE: $type DATA: $frame");
+        //if (kDebugMode) logStep("BLE", "UNKOWN TYPE: $type DATA: $frame");
+        return;
     }
 
-    logStep("BLE", "TYPE=$type VALUE=${frame[5]} FULL=$frame");
+    //if (kDebugMode) logStep("BLE", "TYPE=$type VALUE=${frame[5]} FULL=$frame");
     out.add(SensorPacket(
       heartRate: hr, 
       hrv: hrv, 
@@ -98,7 +101,7 @@ class HeartRateProtocol implements BleProtocol {
       hr = data[1]; // fallback
     }
 
-    logStep("HR", "RAW HR: $data");
+    if (kDebugMode) logStep("HR", "RAW HR: $data");
     out.add(SensorPacket(
       heartRate: hr.toDouble(), 
       hrv: 0, 

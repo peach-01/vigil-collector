@@ -1,4 +1,6 @@
 import 'dart:async';
+import 'package:flutter/foundation.dart';
+
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
@@ -57,11 +59,11 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
       uploader = FirestoreUploader();
 
       stateSub = manager.state.listen((state) async {
-        setState(() => mode = state);
+        if (!mounted) return;
+        if (mode != state) setState(() => mode = state);
 
         // register after connect
         if ((state == WearableState.connected || state == WearableState.streaming) && !_registered) {
-          if (_registered) return;
           _registered = true;
           
           final wid = manager.ble.deviceId;
@@ -77,9 +79,9 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
             pipeline?.dispose();
             pipeline = DataPipeline(uploader: uploader, uid: widget.uid, wid: wid);
 
-            logStep("CONNECT", "Wearable registered: $wid");
+            if (kDebugMode) logStep("CONNECT", "Wearable registered: $wid");
           } catch (e) {
-            logStep("CONNECT", "Registration FAILED: $e");
+            if (kDebugMode) logStep("CONNECT", "Registration FAILED: $e");
             _registered = false;
           }
         }
@@ -90,6 +92,7 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
       });
 
       deviceSub = manager.devices.listen((list) {
+        if (!mounted) return;
         setState(() => devices = list);
       });
 
@@ -97,15 +100,15 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
         lastPacket = packet;
         pipeline?.add(packet);
 
-        setState(() {
-          lastUpload = DateTime.now();
-        });
+        if (mounted) {
+          setState(() => lastUpload = DateTime.now());
+        }
       });
 
       final reconnected = await manager.reconnect();
 
       if (!reconnected) {
-        await manager.connect();  // scan falback
+        await manager.startScan();  // scan falback
       }
     }
 
@@ -130,6 +133,7 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
       deviceSub?.cancel();
       stateSub?.cancel();
       dataSub?.cancel();
+      pipeline?.dispose();
 
       manager.dispose();
       super.dispose();

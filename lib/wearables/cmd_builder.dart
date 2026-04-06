@@ -12,7 +12,7 @@ class CommandBuilder {
     }
 
     data.add(checksum & 0xFF);
-    logStep("CMD BLDR", "Wrote data packet: $data");
+    if (kDebugMode) logStep("CMD BLDR", "Wrote data packet: $data");
     return Uint8List.fromList(data);
   }
 

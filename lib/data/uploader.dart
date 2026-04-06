@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:vigil_collector/logger.dart';
 import 'sensor_packet.dart';
@@ -197,8 +198,8 @@ class FirestoreUploader {
                 _cachedOrgId = orgId;
                 _lastCachedUid = uid;
             } catch (e) {
-                logStep("UPLOAD", "Error fetching user orgId: $e");
-                name = uid;
+              if (kDebugMode) logStep("UPLOAD", "Error fetching user orgId: $e");
+              name = uid;
             }
         }
 
@@ -240,7 +241,7 @@ class FirestoreUploader {
         try {
             await batch.commit();
         } catch (e) {
-            logStep("UPLOAD", "Failed to emit notifications: $e");
+          if (kDebugMode) logStep("UPLOAD", "Failed to emit notifications: $e");
         }
     }
 }

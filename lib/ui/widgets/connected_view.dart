@@ -1,6 +1,4 @@
 import 'package:flutter/material.dart';
-
-//import 'package:vigil_collector/ui/connect_page.dart';
 import 'package:vigil_collector/data/sensor_packet.dart';
 import 'package:vigil_collector/wearables/wearable_manager.dart';
 
@@ -17,50 +15,65 @@ class ConnectedView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Text("WEARABLE STATUS", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 25, letterSpacing: 6)),
+    final hr = lastPacket?.heartRate.toStringAsFixed(0) ?? "--";
+    final temp = lastPacket?.temp.toStringAsFixed(1) ?? "--";
+    final motion = lastPacket?.motion.toStringAsFixed(1) ?? "--";
 
-        const SizedBox(height: 16),
-        _statusIndicator(),
-        const SizedBox(height: 24),
-        Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Text("DEVICE ID", style: TextStyle(fontSize: 20, letterSpacing: 2)),
-            SizedBox(height: 12),
-            Text(deviceId.isNotEmpty ? deviceId : "Unknown", style: TextStyle(fontSize: 16)),
-          ],
-        ),
+    return Padding(
+      padding: const EdgeInsets.all(24),
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          Text("WEARABLE STATUS", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 25, letterSpacing: 6)),
 
-        const SizedBox(height: 16),
-        if (lastUpload != null)
-          Text("Last Upload:   ${lastUpload!.toLocal()}", style: TextStyle(fontSize: 18)),
-        
-        const SizedBox(height: 16),
-        Image.asset('assets/VIGIL_logo_white.png', width: 250, height: 250),
-        const SizedBox(height: 16),
+          const SizedBox(height: 20),
+          _statusIndicator(),
 
-        if (lastPacket != null)
-          Text(
-            "HR ${lastPacket!.heartRate.toStringAsFixed(0)}      |       "
-            "Temp ${lastPacket!.temp.toStringAsFixed(1)}°C       |       "
-            "Motion ${lastPacket!.motion.toStringAsFixed(1)}",
-            style: TextStyle(fontSize: 18),
+          const SizedBox(height: 30),
+          
+          Text("DEVICE ID", style: TextStyle(fontSize: 18, letterSpacing: 2, color: Colors.grey[400])),
+          SizedBox(height: 6),
+          Text(deviceId.isNotEmpty ? deviceId : "Unknown", style: TextStyle(fontSize: 14)),
+
+          const SizedBox(height: 16),
+          if (lastUpload != null)
+            Text("Last Sync:   ${lastUpload!.toLocal()}", style: TextStyle(fontSize: 12, color: Colors.grey[500])),
+          
+          const SizedBox(height: 30),
+          //Image.asset('assets/VIGIL_logo_white.png', width: 250, height: 250),
+          //const SizedBox(height: 16),
+
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+            children: [
+              _metric("HR", hr),
+              _metric("TEMP", "$temp°C"),
+              _metric("MOTION", motion),
+            ],
           ),
-        
-        const SizedBox(height: 32),
+          
+          const SizedBox(height: 40),
 
-        ElevatedButton(
-          onPressed: onReconnect,
-          child: const Text("RECONNECT", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 2)),
-        ),
+          ElevatedButton(
+            onPressed: onReconnect,
+            child: const Text("RECONNECT", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 2)),
+          ),
 
-        ElevatedButton(
-          onPressed: onUnpair, 
-          child: const Text("UNPAIR"),
-        ),
+          ElevatedButton(
+            onPressed: onUnpair, 
+            child: const Text("UNPAIR DEVICE"),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _metric(String label, String value) {
+    return Column(
+      children: [
+        Text(label, style: TextStyle(color: Colors.grey[400], fontSize: 12)),
+        SizedBox(height: 4),
+        Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
       ],
     );
   }
