@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+
 import 'package:vigil_collector/data/sensor_packet.dart';
 import 'package:vigil_collector/logger.dart';
 import 'package:vigil_collector/wearables/wearable_service.dart';
+
 
 enum WearableState {
   scanning,
@@ -24,9 +26,13 @@ class WearableManager {
   bool _foundAnyDevice = false;
   bool _busy = false;
   bool _reconnecting = false;
+  bool _silentScanning = false;
+  bool _showScanUI = false;
 
   Timer? _scanTimeout;
   Timer? _watchDog;
+
+  String? _lastDeviceId;
 
   DateTime _lastDataTime = DateTime.now();
   DateTime _lastForward = DateTime.fromMillisecondsSinceEpoch(0);
@@ -40,6 +46,9 @@ class WearableManager {
   Stream<SensorPacket> get data => _data.stream;
   Stream<List<ScanResult>> get devices => _devices.stream;
 
+  bool get shouldShowScanUI => _showScanUI;
+
+
   // ----------- CONNECT ------------
 
   Future<bool> connect() async {
@@ -50,6 +59,7 @@ class WearableManager {
       final ok = await ble.reconnectLastDevice();
       if (ok) {
         _onConnected();
+        _lastDeviceId = ble.deviceId;
         return true;
       }
 
@@ -90,22 +100,28 @@ class WearableManager {
 
     // ----------- SCAN ------------
 
-  Future<void> startScan() async {
+  Future<void> startScan({bool silent = false}) async {
+    _silentScanning = silent;
+    _showScanUI = !silent;
+
     if (_state != WearableState.connected) {
       await ble.disconnect();
     }
     
-    _foundAnyDevice = false;
-
     _state.add(WearableState.scanning);
     await ble.startScan();
 
     _scanSub?.cancel();
-    _scanSub = ble.scanStream.listen((devices) {
-      if (devices.isNotEmpty) {
-        _foundAnyDevice = true;
-      }
+    _scanSub = ble.scanStream.listen((devices) async {
       _devices.add(devices);
+
+      // AUTO-CONNECT best match
+      if (devices.isNotEmpty) {
+        final best = devices.first;
+        if (_isReconnectTarget(best)) {
+          await connectToDevice(best.device);
+        }
+      }
     });
 
     _scanTimeout?.cancel();
@@ -115,6 +131,15 @@ class WearableManager {
         await startScan();    // auto retry
       }
     });
+  }
+
+  bool _isReconnectTarget(ScanResult r) {
+    return r.device.remoteId.str == _lastDeviceId;
+  }
+
+  void enableScanUI() {
+    _showScanUI = true;
+    _state.add(WearableState.scanning);
   }
 
   // ----------- DATA ------------
@@ -145,8 +170,8 @@ class WearableManager {
 
       final diff = now.difference(_lastDataTime);
       if (diff > const Duration(seconds: 40)) {
-        if (kDebugMode) logStep("WATCHDOG", "Timeout - reconnecting");
-        await reconnect();
+        if (kDebugMode) logStep("WATCHDOG", "Lost connection");
+        await startReconnectLoop();
       }
     });
   }
@@ -172,6 +197,29 @@ class WearableManager {
       _reconnecting = false;
     }
   } 
+
+  Future<void> startReconnectLoop() async {
+    if (_reconnecting) return;
+    _reconnecting = true;
+
+    while (_reconnecting) {
+      if (kDebugMode) logStep("RECONNECT", "Attempting...");
+      final s = await ble.reconnectLastDevice();
+
+      if (s) {
+        _onConnected();
+        _reconnecting = false;
+        return;
+      }
+
+      // fallback to scan
+      await ble.startScan();
+      await Future.delayed(const Duration(seconds: 5));
+      await ble.stopScan();
+
+      await Future.delayed(const Duration(seconds: 2));
+    }
+  }
 
   Future<void> dispose() async {
     await _dataSub?.cancel();

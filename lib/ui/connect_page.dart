@@ -1,13 +1,12 @@
 import 'dart:async';
 import 'package:flutter/foundation.dart';
-
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
+
 import 'package:vigil_collector/data/data_pipeline.dart';
 import 'package:vigil_collector/logger.dart';
-
 import 'package:vigil_collector/ui/widgets/connected_view.dart';
 import 'package:vigil_collector/ui/widgets/scan_list.dart';
 import 'package:vigil_collector/wearables/wearable_manager.dart';
@@ -115,11 +114,7 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
         }
       });
 
-      final reconnected = await manager.reconnect();
-
-      if (!reconnected) {
-        await manager.startScan();  // scan falback
-      }
+      smartStartup();
     }
 
     bool _isValidPacket(SensorPacket p) {
@@ -137,6 +132,19 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
       );
     }
 
+    Future<void> smartStartup() async {
+      // Stage 1: silent reconnect attempt (fast)
+      final s = await manager.reconnect();
+      if (s) return;
+
+      // Stage 2: background scan (no UI switch yet)
+      await manager.startScan(silent: true);
+
+      // Stage 3: after delay, show device list
+      Future.delayed(const Duration(seconds: 25), () {
+        manager.enableScanUI();
+      });
+    }
 
     Future<void> _logout() async {
       dispose();
@@ -164,15 +172,15 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
 
         switch (mode) {
           case WearableState.scanning:
-            body = devices.isEmpty
-              ? _scanningView()
-              : ScanList(
+            body = manager.shouldShowScanUI
+              ? ScanList(
                   devices: devices, 
                   isVigil: _isVigilWearable, 
                   onTap: (device) async {
                     await manager.connectToDevice(device);
                   },
-              );
+              )
+              : _scanningView(); 
             break;
 
           case WearableState.connecting:
