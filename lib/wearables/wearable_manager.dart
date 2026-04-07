@@ -53,7 +53,9 @@ class WearableManager {
 
   Future<bool> connect() async {
     if (_busy) return false;
+    
     _busy = true;
+    _state.add(WearableState.connecting);
 
     try {
       final ok = await ble.reconnectLastDevice();
@@ -200,7 +202,10 @@ class WearableManager {
 
   Future<void> startReconnectLoop() async {
     if (_reconnecting) return;
+
+    _busy = true;
     _reconnecting = true;
+    _state.add(WearableState.connecting);
 
     while (_reconnecting) {
       if (kDebugMode) logStep("RECONNECT", "Attempting...");
@@ -208,7 +213,9 @@ class WearableManager {
 
       if (s) {
         _onConnected();
+
         _reconnecting = false;
+        _busy = false;
         return;
       }
 

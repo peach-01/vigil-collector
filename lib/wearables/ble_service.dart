@@ -1,7 +1,7 @@
 import 'dart:async';
-//import 'package:async/async.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+
 import 'package:vigil_collector/data/wearable_storage.dart';
 import 'package:vigil_collector/logger.dart';
 import 'package:vigil_collector/wearables/cmd_builder.dart';
