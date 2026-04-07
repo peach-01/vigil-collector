@@ -6,14 +6,9 @@ import 'package:vigil_collector/logger.dart';
 import 'package:vigil_collector/wearables/wearable_service.dart';
 
 enum WearableState {
-  idle,
   scanning,
   connecting,
   connected,
-  streaming,
-  timeout,
-  notFound,
-  error,
 }
 
 class WearableManager {
@@ -27,6 +22,8 @@ class WearableManager {
   StreamSubscription? _scanSub;
 
   bool _foundAnyDevice = false;
+  bool _busy = false;
+  bool _reconnecting = false;
 
   Timer? _scanTimeout;
   Timer? _watchDog;
@@ -36,8 +33,6 @@ class WearableManager {
   DateTime? _connectedAt;
 
   static const _initGrace = Duration(seconds: 15);
-
-  bool _busy = false;
 
   WearableManager(this.ble);
 
@@ -114,9 +109,10 @@ class WearableManager {
     });
 
     _scanTimeout?.cancel();
-    _scanTimeout = Timer(const Duration(seconds: 12), () {
+    _scanTimeout = Timer(const Duration(seconds: 12), () async {
       if (!_foundAnyDevice) {
-        _state.add(WearableState.notFound);
+        if (kDebugMode) logStep("SCAN", "No devices found, retrying...");
+        await startScan();    // auto retry
       }
     });
   }
@@ -133,7 +129,6 @@ class WearableManager {
 
       _lastDataTime = now;
       _data.add(p);
-      _state.add(WearableState.streaming);
     });
   }
 
@@ -151,7 +146,6 @@ class WearableManager {
       final diff = now.difference(_lastDataTime);
       if (diff > const Duration(seconds: 40)) {
         if (kDebugMode) logStep("WATCHDOG", "Timeout - reconnecting");
-        _state.add(WearableState.timeout);
         await reconnect();
       }
     });
@@ -161,18 +155,21 @@ class WearableManager {
 
   Future<bool> reconnect() async {
     if (_busy) return false;
+
     _busy = true;
+    _reconnecting = true;
+    _state.add(WearableState.connecting);
 
     try {
       await ble.disconnect();
       await Future.delayed(const Duration(seconds: 2));
-        
       return await connect();
     } catch (e) {
-      _state.add(WearableState.error);
+      if (kDebugMode) logStep("RECONNECT", "Reconnection FAIL: $e");
       return false;
     } finally {
       _busy = false;
+      _reconnecting = false;
     }
   } 
 

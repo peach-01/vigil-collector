@@ -8,10 +8,9 @@ class ConnectedView extends StatelessWidget {
   final SensorPacket? lastPacket;
   final WearableState status;
 
-  final VoidCallback onReconnect;
   final VoidCallback onUnpair;
 
-  const ConnectedView({super.key, required this.deviceId, required this.lastUpload, required this.lastPacket, required this.status, required this.onReconnect, required this.onUnpair});
+  const ConnectedView({super.key, required this.deviceId, required this.lastUpload, required this.lastPacket, required this.status, required this.onUnpair});
 
   @override
   Widget build(BuildContext context) {
@@ -40,9 +39,6 @@ class ConnectedView extends StatelessWidget {
             Text("Last Sync:   ${lastUpload!.toLocal()}", style: TextStyle(fontSize: 12, color: Colors.grey[500])),
           
           const SizedBox(height: 30),
-          //Image.asset('assets/VIGIL_logo_white.png', width: 250, height: 250),
-          //const SizedBox(height: 16),
-
           Row(
             mainAxisAlignment: MainAxisAlignment.spaceEvenly,
             children: [
@@ -54,14 +50,9 @@ class ConnectedView extends StatelessWidget {
           
           const SizedBox(height: 40),
 
-          ElevatedButton(
-            onPressed: onReconnect,
-            child: const Text("RECONNECT", style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, letterSpacing: 2)),
-          ),
-
-          ElevatedButton(
+          TextButton(
             onPressed: onUnpair, 
-            child: const Text("UNPAIR DEVICE"),
+            child: const Text("Forget Device", style: TextStyle(color: Colors.grey)),
           ),
         ],
       ),
@@ -89,20 +80,10 @@ class ConnectedView extends StatelessWidget {
         text = "Connecting";
         icon = Icons.hourglass_empty;
         break;
-      case WearableState.streaming:
-        color = Colors.blue;
-        text = "Uploading";
-        icon = Icons.cloud_upload;
-        break;
       case WearableState.connected:
         color = Colors.green;
         text = "Connected";
         icon = Icons.check_circle;
-        break;
-      case WearableState.error:
-        color = Colors.red;
-        text = "Error";
-        icon = Icons.error;
         break;
       default:
         color = Colors.grey;

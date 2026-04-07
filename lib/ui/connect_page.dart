@@ -9,9 +9,7 @@ import 'package:vigil_collector/data/data_pipeline.dart';
 import 'package:vigil_collector/logger.dart';
 
 import 'package:vigil_collector/ui/widgets/connected_view.dart';
-import 'package:vigil_collector/ui/widgets/not_found_view.dart';
 import 'package:vigil_collector/ui/widgets/scan_list.dart';
-import 'package:vigil_collector/ui/widgets/timeout_view.dart';
 import 'package:vigil_collector/wearables/wearable_manager.dart';
 import '../wearables/ble_service.dart';
 import '../wearables/mock_wearable_service.dart';
@@ -38,7 +36,7 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
 
     DataPipeline? pipeline;
 
-    WearableState mode = WearableState.idle;
+    WearableState mode = WearableState.scanning;
     List<ScanResult> devices = [];
 
     bool _registered = false;
@@ -63,7 +61,7 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
         if (mode != state) setState(() => mode = state);
 
         // register after connect
-        if ((state == WearableState.connected || state == WearableState.streaming) && !_registered) {
+        if ((state == WearableState.connected) && !_registered) {
           _registered = true;
           
           final wid = manager.ble.deviceId;
@@ -86,14 +84,24 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
           }
         }
 
-        if (state == WearableState.idle || state == WearableState.scanning) {
+        if (state == WearableState.scanning) {
           _registered = false;
         }
       });
 
-      deviceSub = manager.devices.listen((list) {
+      deviceSub = manager.devices.listen((list) async {
         if (!mounted) return;
         setState(() => devices = list);
+
+        // AUTO-CONNECT LOGIC
+        if (mode == WearableState.scanning && list.isNotEmpty) {
+          final best = list.first;
+
+          // connection to VIGIL devices only
+          if (_isVigilWearable(best)) {
+            await manager.connectToDevice(best.device);
+          }
+        }
       });
 
       dataSub = manager.data.listen((packet) async {
@@ -123,8 +131,8 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
       final adv = r.advertisementData.advName.toUpperCase();
       return (
         name.contains("VIGIL") || adv.contains("VIGIL") ||
+        
         name.startsWith("H303") || adv.startsWith("H303") ||
-        name.startsWith("H6") || adv.startsWith("H6") ||
         name.startsWith("HW706") || adv.startsWith("HW706")
       );
     }
@@ -155,27 +163,16 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
         Widget body;
 
         switch (mode) {
-          case WearableState.idle:
-            body = const Center(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  CircularProgressIndicator(),
-                  SizedBox(height: 16),
-                  Text("Searching for nearby VIGIL devices..."),
-                ],
-              )
-            );
-            break;
-
           case WearableState.scanning:
-            body = ScanList(
-              devices: devices, 
-              isVigil: _isVigilWearable, 
-              onTap: (device) async {
-                await manager.connectToDevice(device);
-              },
-            );
+            body = devices.isEmpty
+              ? _scanningView()
+              : ScanList(
+                  devices: devices, 
+                  isVigil: _isVigilWearable, 
+                  onTap: (device) async {
+                    await manager.connectToDevice(device);
+                  },
+              );
             break;
 
           case WearableState.connecting:
@@ -185,37 +182,20 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
                 children: [
                   CircularProgressIndicator(),
                   SizedBox(height: 16),
-                  Text("Connecting to device..."),
+                  Text("Connecting..."),
                 ],
               )
             );
             break;
 
           case WearableState.connected:
-          case WearableState.streaming:
             body = ConnectedView(
               deviceId: manager.ble.deviceId, 
               lastUpload: lastUpload, 
               lastPacket: lastPacket, 
               status: mode, 
-              onReconnect: manager.reconnect, 
               onUnpair: manager.ble.disconnect,
             );
-            break;
-
-          case WearableState.timeout:
-            body = TimeoutView(onRescan: manager.startScan);
-            break;
-
-          case WearableState.notFound:
-            body = NotFoundView(
-              onRetry: manager.startScan, 
-              onPairNew: manager.connect,
-            );
-            break;
-
-          case WearableState.error:
-            body = Center(child: Text("Error"));
             break;
         }
 
@@ -238,4 +218,17 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
           body: body,
         );
     }
+}
+
+Widget _scanningView() {
+  return const Center(
+    child: Column(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        CircularProgressIndicator(),
+        SizedBox(height: 16),
+        Text("Connecting to your device..."),
+      ],
+    ),
+  );
 }
