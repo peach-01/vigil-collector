@@ -14,7 +14,7 @@ class OrgGatewayPage extends StatefulWidget {
 
 class _OrgGatewayPageState extends State<OrgGatewayPage> {
   late GatewayManager gateway;
-  final List<ScanResult> devices = [];
+  final List<ScanResult> scanResults = [];
 
   @override
   void initState() {
@@ -31,8 +31,8 @@ class _OrgGatewayPageState extends State<OrgGatewayPage> {
 
     FlutterBluePlus.scanResults.listen((results) {
       setState(() {
-        devices.clear();
-        devices.addAll(results);
+        scanResults.clear();
+        scanResults.addAll(results);
       });
     });
   }
@@ -52,13 +52,18 @@ class _OrgGatewayPageState extends State<OrgGatewayPage> {
         children: [
           Expanded(
             child: ListView.builder(
-              itemCount: devices.length,
+              itemCount: scanResults.length,
               itemBuilder: (_, i) {
-                final d = devices[i];
+                final d = scanResults[i];
+                final wid = d.device.id.id;
+                final deviceName = d.device.name.isNotEmpty ? d.device.name : "Unknown Device";
+                final deviceInfo = gateway.devices[wid];
+                final userName = deviceInfo?.userName ?? "Unassigned";
+                final connectStatus = deviceInfo?.isConnected ?? false ? "Connect" : "Not Connected";
 
                 return ListTile(
-                  title: Text(d.device.name.isNotEmpty ? d.device.name : "Unknown Device"),
-                  subtitle: Text(d.device.remoteId.str),
+                  title: Text(deviceName),
+                  subtitle: Text("User: $userName\nStatus: $connectStatus\nID: ${d.device.remoteId.str}"),
                   onTap: () => _connect(d.device),
                 );
               },
@@ -67,7 +72,10 @@ class _OrgGatewayPageState extends State<OrgGatewayPage> {
           const Divider(),
 
           Text("Connected Devices:"),
-          ...gateway.connectedIds.map((id) => Text(id)).toList(),
+          ...gateway.connectedIds.map((id) {
+            final deviceInfo = gateway.devices[id];
+            return Text("${deviceInfo?.device.name ?? 'Unknown Device'} - ${deviceInfo?.userName ?? "Unassigned"}");
+          }),
         ],
       ),
     );

@@ -36,7 +36,7 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
     DataPipeline? pipeline;
 
     WearableState mode = WearableState.scanning;
-    List<ScanResult> devices = [];
+    List<ScanResult> scanResults = [];
 
     bool _registered = false;
     late final FirestoreUploader uploader;
@@ -90,7 +90,7 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
 
       deviceSub = manager.devices.listen((list) async {
         if (!mounted) return;
-        setState(() => devices = list);
+        setState(() => scanResults = list);
 
         // AUTO-CONNECT LOGIC
         if (mode == WearableState.scanning && list.isNotEmpty) {
@@ -174,7 +174,7 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
           case WearableState.scanning:
             body = manager.shouldShowScanUI
               ? ScanList(
-                  devices: devices, 
+                  scanResults: scanResults, 
                   isVigil: _isVigilWearable, 
                   onTap: (device) async {
                     await manager.connectToDevice(device);

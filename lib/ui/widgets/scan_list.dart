@@ -2,11 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 class ScanList extends StatelessWidget {
-  final List<ScanResult> devices;
+  final List<ScanResult> scanResults;
   final Function(BluetoothDevice) onTap;
   final bool Function(ScanResult) isVigil;
 
-  const ScanList({super.key, required this.devices, required this.onTap, required this.isVigil});
+  const ScanList({super.key, required this.scanResults, required this.onTap, required this.isVigil});
 
   String signalLabel(int rssi) {
     if (rssi > -60) return "Strong";
@@ -16,7 +16,7 @@ class ScanList extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (devices.isEmpty) {
+    if (scanResults.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
@@ -28,13 +28,13 @@ class ScanList extends StatelessWidget {
         ),
       );
     }
-    devices.sort((a, b) => b.rssi.compareTo(a.rssi));
-    //final top3 = devices.take(3).toList();      // priotize best signal
+    scanResults.sort((a, b) => b.rssi.compareTo(a.rssi));
+    //final top3 = scanResults.take(3).toList();      // priotize best signal
 
     return ListView.builder(
-      itemCount: devices.length,
+      itemCount: scanResults.length,
       itemBuilder: (_, i) {
-        final d = devices[i];
+        final d = scanResults[i];
         final vigil = isVigil(d);
 
         String displayName = d.device.name.isNotEmpty ? d.device.name : "Unknown Device";
