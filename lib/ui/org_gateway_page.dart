@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:vigil_collector/data/uploader.dart';
@@ -23,7 +24,7 @@ class _OrgGatewayPageState extends State<OrgGatewayPage> {
 
   StreamSubscription? scanSub;
   StreamSubscription? updateSub;
-  
+
   WearableState mode = WearableState.scanning;
   
 
@@ -85,6 +86,15 @@ class _OrgGatewayPageState extends State<OrgGatewayPage> {
     setState(() => mode = WearableState.connected);
   }
 
+  Future<void> _logout() async {
+    dispose();
+    await scanManager.ble.disconnect();
+    await FirebaseAuth.instance.signOut();
+
+    if (!mounted) return;
+    Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+  }
+
   @override
   Widget build(BuildContext context) {
     Widget body;
@@ -117,7 +127,21 @@ class _OrgGatewayPageState extends State<OrgGatewayPage> {
     }
 
     return Scaffold(
-      appBar: AppBar(title: const Text("ORG GATEWAY")),
+      appBar: AppBar(
+        title: Row(
+          children: [
+            Image.asset('assets/VIGIL_logo_white.png', width: 60, height: 60),
+            SizedBox(width: 12),
+            Text("ORG GATEWAY", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, letterSpacing: 3)),
+          ],
+        ),
+        actions: [
+          IconButton(
+            icon: Icon(Icons.logout),
+            onPressed: _logout,
+          ),
+        ],
+      ),
       body: body,
     );
   }
