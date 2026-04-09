@@ -15,6 +15,12 @@ class AuthGate extends StatelessWidget {
     return doc.data();
   }
 
+  Future<String> _getRole(String uid) async {
+    final doc = await FirebaseFirestore.instance.collection("roles").doc(uid).get();
+    final data = doc.data();
+    return (data!["role"] ?? "user");
+  }
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<User?>(
@@ -32,11 +38,8 @@ class AuthGate extends StatelessWidget {
             if (userSnap.hasError) logStep("AUTH", "Authentication error: ${userSnap.error}");
             if (!userSnap.hasData) return const Scaffold(body: Center(child: CircularProgressIndicator()));
 
-            final data = userSnap.data!;
-            final role = data["profile.role"] ?? "user";
-            final orgId = data["orgId"];
-
-            if (role == "org" && orgId != null) {
+            final role = _getRole(uid);
+            if (role == "org") {
               return OrgGatewayPage(orgId: uid);
             }
 
