@@ -11,14 +11,26 @@ class AuthGate extends StatelessWidget {
   const AuthGate({super.key});
 
   Future<Map<String, dynamic>?> _loadUser(String uid) async {
-    final doc = await FirebaseFirestore.instance.collection("users").doc(uid).get();
-    return doc.data();
+    try {
+      final doc = await FirebaseFirestore.instance.collection("users").doc(uid).get();
+      return doc.data();
+    } catch (e) {
+      logStep("AUTH", "Error loading user data: $e");
+      throw e;
+    }
+    
   }
 
   Future<String> _getRole(String uid) async {
-    final doc = await FirebaseFirestore.instance.collection("roles").doc(uid).get();
-    final data = doc.data();
-    return (data!["role"] ?? "user");
+    try {
+      final doc = await FirebaseFirestore.instance.collection("roles").doc(uid).get();
+      final data = doc.data();
+      return data?["role"] ?? "user";
+    } catch (e) {
+      logStep("AUTH", "Error loading role data: $e");
+      return "user";    // fallback to user role
+    }
+    
   }
 
   @override
@@ -26,25 +38,34 @@ class AuthGate extends StatelessWidget {
     return StreamBuilder<User?>(
       stream: FirebaseAuth.instance.authStateChanges(),
       builder: (context, snap) {
-        if (snap.connectionState == ConnectionState.waiting) return const Scaffold(body: Center(child: Text("AUTH: WAITING")));
+        if (snap.connectionState == ConnectionState.waiting) return const Scaffold(body: Center(child: CircularProgressIndicator()));
         if (snap.hasError) return Scaffold(body: Center(child: Text("AUTH ERROR: ${snap.error}")));        
         if (!snap.hasData) return const LoginPage();
 
         final uid = snap.data!.uid;
                 
-        return FutureBuilder(
+        return FutureBuilder<Map<String, dynamic>?>(
           future: _loadUser(uid), 
           builder: (context, userSnap) {
-            if (userSnap.hasError) logStep("AUTH", "Authentication error: ${userSnap.error}");
-            if (!userSnap.hasData) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+            if (userSnap.connectionState == ConnectionState.waiting) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+            if (userSnap.hasError) return Scaffold(body: Center(child: Text("Error loading user: ${userSnap.error}")));
+            if (!userSnap.hasData) return const Scaffold(body: Center(child: Text("User data not found")));
 
-            final role = _getRole(uid);
-            if (role == "org") {
-              return OrgGatewayPage(orgId: uid);
-            }
+            return FutureBuilder<String>(
+              future: _getRole(uid), 
+              builder: (context, roleSnap) {
+                if (roleSnap.connectionState == ConnectionState.waiting) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+                if (roleSnap.hasError) return Scaffold(body: Center(child: Text("Error loading role: ${roleSnap.error}")));
+                if (!roleSnap.hasData) return const Scaffold(body: Center(child: Text("Role data not found")));
 
-            // default - individual flow
-            return ConnectWearablePage(uid: uid);
+                final role = roleSnap.data ?? "user";
+                
+                if (role == "org") {
+                  return OrgGatewayPage(orgId: uid);
+                }
+                return ConnectWearablePage(uid: uid);   // default - individual flow
+              },
+            );
           },
         );
       },
