@@ -106,11 +106,12 @@ class FirestoreUploader {
         }, SetOptions(merge: true));
     }
 
-    Future<void> uploadBatch({required String uid, required String wid, required List<SensorPacket> packets}) async {
+    Future<void> uploadBatch({required String ownerId, required String wid, required List<SensorPacket> packets, bool isOrg = false}) async {
       if (packets.isEmpty) return;
 
+      final base = isOrg ? _db.collection('orgs').doc(ownerId) : _db.collection('users').doc(ownerId);
       final batch = _db.batch();
-      final telemetryCol = _db.collection('users').doc(uid).collection('wearables').doc(wid).collection('telemetry');
+      final telemetryCol = base.collection('wearables').doc(wid).collection('telemetry');
 
       for (final p in packets) {
         final ref = telemetryCol.doc();
@@ -129,7 +130,7 @@ class FirestoreUploader {
       final last = packets.last;
 
       // single update
-      batch.set(_db.collection('users').doc(uid), {
+      batch.set(_db.collection('users').doc(ownerId), {
         'latestMetrics': {
           'ts': FieldValue.serverTimestamp(),
           'heartRate': last.heartRate,
@@ -149,7 +150,7 @@ class FirestoreUploader {
       await batch.commit();
 
       // run danger detection on last sample only
-      _evalRealtimeTelemetry(uid, wid, last);
+      _evalRealtimeTelemetry(ownerId, wid, last);
     }
 
     Future<void> ingestTelemetry({required String uid, required String wid, required SensorPacket packet}) async {

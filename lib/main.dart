@@ -8,6 +8,11 @@ import 'package:firebase_crashlytics/firebase_crashlytics.dart';
 import 'auth/auth_gate.dart';
 import './firebase_options.dart';
 
+enum AppMode {
+  individual,
+  orgGateway,
+}
+
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   //debugPrint("BOOT_TRACE: Flutter binding initialized");

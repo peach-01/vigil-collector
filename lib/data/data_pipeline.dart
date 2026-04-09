@@ -2,16 +2,19 @@ import 'dart:async';
 import 'dart:collection';
 import 'package:flutter/foundation.dart';
 import 'package:vigil_collector/logger.dart';
+import 'package:vigil_collector/wearables/packet_cache.dart';
 import 'sensor_packet.dart';
 import 'uploader.dart';
 
 class DataPipeline {
   final FirestoreUploader uploader;
-  final String uid;
+  final String ownerId;
   final String wid;
+  final bool isOrg;
 
   final Queue<SensorPacket> _queue = Queue();
   final List<SensorPacket> _batch = [];
+  final PacketCache cache = PacketCache();
 
   Timer? _flushTimer;
   bool _uploading = false;
@@ -20,7 +23,8 @@ class DataPipeline {
   static const int maxQueueSize = 500;
   static const Duration flushInterval = Duration(seconds: 30);
 
-  DataPipeline({required this.uploader, required this.uid, required this.wid}) {
+  DataPipeline({required this.uploader, required this.ownerId, required this.wid, this.isOrg = false}) {
+    _drainCacheOnStart();
     _startAutoFlush();
   }
 
@@ -47,10 +51,11 @@ class DataPipeline {
 
       if (_batch.isEmpty) return;
 
-      await uploader.uploadBatch(uid: uid, wid: wid, packets: List.from(_batch));
+      await uploader.uploadBatch(ownerId: ownerId, wid: wid, packets: List.from(_batch));
       _batch.clear();
     } catch (e) {
       if (kDebugMode) logStep("PIPELINE", "Upload FAILED, re-queueing: $e");
+      await cache.addBatch(_batch);
 
       // delay before retrying
       await Future.delayed(const Duration(seconds: 2));
@@ -60,6 +65,13 @@ class DataPipeline {
       _batch.clear();
     } finally {
       _uploading = false;
+    }
+  }
+
+  Future<void> _drainCacheOnStart() async {
+    if (await cache.hasData()) {
+      final cached = await cache.drain();
+      _queue.addAll(cached);
     }
   }
 

@@ -1,419 +1,45 @@
 auth
     auth_gate.dart
-        import 'package:flutter/material.dart';
-        import 'package:firebase_auth/firebase_auth.dart';
-        import '../ui/connect_wearable_page.dart';
-        import 'login_page.dart';
-        class AuthGate extends StatelessWidget {
-            const AuthGate({super.key});
-            @override
-            Widget build(BuildContext context) {
-                return StreamBuilder<User?>(
-                    stream: FirebaseAuth.instance.authStateChanges(),
-                    builder: (context, snap) {
-                        if (!snap.hasData) return const LoginPage();
-                        return ConnectWearablePage(uid: snap.data!.uid);
-                    },
-                );
-            }
-        }
+        import 'package:cloud_firestore/cloud_firestore.dart'; import 'package:flutter/material.dart'; import 'package:firebase_auth/firebase_auth.dart'; import 'package:vigil_collector/ui/org_gateway_page.dart';  import '../ui/connect_page.dart'; import 'login_page.dart';  class AuthGate extends StatelessWidget {   const AuthGate({super.key});    Future<Map<String, dynamic>?> _loadUser(String uid) async {     final doc = await FirebaseFirestore.instance.collection("users").doc(uid).get();     return doc.data();   }    @override   Widget build(BuildContext context) {     return StreamBuilder<User?>(       stream: FirebaseAuth.instance.authStateChanges(),       builder: (context, snap) {          if (snap.connectionState == ConnectionState.waiting) return const Scaffold(body: Center(child: Text("AUTH: WAITING")));         if (snap.hasError) return Scaffold(body: Center(child: Text("AUTH ERROR: ${snap.error}")));                 if (!snap.hasData) return const LoginPage();          final uid = snap.data!.uid;                          return FutureBuilder(           future: _loadUser(uid),            builder: (context, userSnap) {             if (!userSnap.hasData) return const Scaffold(body: Center(child: CircularProgressIndicator()));              final data = userSnap.data!;             final role = data["role"] ?? "user";             final orgId = data["orgId"];              if (role == "org_gateway" && orgId != null) {               return OrgGatewayPage(orgId: orgId);             }              // default - individual flow             return ConnectWearablePage(uid: uid);           },         );       },     );   } }
     login_page.dart
-        import 'package:flutter/material.dart';
-        import 'package:firebase_auth/firebase_auth.dart';
-        class LoginPage extends StatefulWidget {
-            const LoginPage({super.key});
-            @override
-            State<LoginPage> createState() => _LoginPageState();
-        }
-        class _LoginPageState extends State<LoginPage> {
-            final email = TextEditingController();
-            final password = TextEditingController();
-            String error = "";
-            Future<void> _login() async {
-                try {
-                    await FirebaseAuth.instance.signInWithEmailAndPassword(
-                        email: email.text.trim(),
-                        password: password.text.trim(),
-                    );
-                } catch (e) {
-                    setState(() => error = e.toString());
-                }
-            }
-            @override
-            Widget build(BuildContext context) {
-                return Scaffold(
-                    body: Center(
-                        child: SizedBox(
-                            width: 320,
-                            child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                    TextField(controller: email, decoration: const InputDecoration(labelText: 'Email')),
-                                    TextField(controller: password, decoration: const InputDecoration(labelText: 'Password'), obscureText: true),
-                                    const SizedBox(height: 20),
-                                    ElevatedButton(onPressed: _login, child: const Text('LOGIN')),
-                                    if (error.isNotEmpty) Text(error, style: const TextStyle(color: Colors.red)),
-                                ],
-                            ),
-                        ),
-                    ),
-                );
-            }
-        }
-
+        import 'package:flutter/material.dart'; import 'package:firebase_auth/firebase_auth.dart';  class LoginPage extends StatefulWidget {     const LoginPage({super.key});      @override     State<LoginPage> createState() => _LoginPageState(); }  class _LoginPageState extends State<LoginPage> {     final email = TextEditingController();     final password = TextEditingController();     String error = "";      Future<void> _login() async {         try {             await FirebaseAuth.instance.signInWithEmailAndPassword(                 email: email.text.trim(),                 password: password.text.trim(),             );         } catch (e) {             setState(() => error = e.toString());         }     }      @override     Widget build(BuildContext context) {       return Scaffold(           appBar: AppBar(               title: Row(                   children: [                       Image.asset('assets/VIGIL_logo_white.png', width: 60, height: 60),                       SizedBox(width: 12),                       Text("VIGIL CONNECT", style: TextStyle(fontFamily: 'Michroma', fontSize: 18, letterSpacing: 3)),                   ]               )           ),           body: Center(               child: SizedBox(                   width: 320,                   child: Column(                       mainAxisAlignment: MainAxisAlignment.center,                       children: [                           Text('L O G I N', style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold, fontFamily: 'Michroma')),                           const SizedBox(height: 35),                            TextField(controller: email, decoration: const InputDecoration(labelText: 'Email', labelStyle: TextStyle(fontFamily: 'Jura', fontSize: 18))),                           TextField(controller: password, decoration: const InputDecoration(labelText: 'Password', labelStyle: TextStyle(fontFamily: 'Jura', fontSize: 18)), obscureText: true),                           const SizedBox(height: 20),                                                      ElevatedButton(onPressed: _login, child: const Text('L O G I N', style: TextStyle(fontFamily: 'Jura', fontSize: 14, fontWeight: FontWeight.bold))),                           if (error.isNotEmpty)                                Text(error, style: const TextStyle(color: Colors.red, fontFamily: 'Jura', fontSize: 12)),                       ],                   ),               ),           ),       );     } }
 data
+    data_pipeline.dart
+        import 'dart:async'; import 'dart:collection'; import 'package:flutter/foundation.dart'; import 'package:vigil_collector/logger.dart'; import 'package:vigil_collector/wearables/packet_cache.dart'; import 'sensor_packet.dart'; import 'uploader.dart';  class DataPipeline {   final FirestoreUploader uploader;   final String ownerId;   final String wid;   final bool isOrg;    final Queue<SensorPacket> _queue = Queue();   final List<SensorPacket> _batch = [];   final PacketCache cache = PacketCache();    Timer? _flushTimer;   bool _uploading = false;    static const int batchSize = 10;   static const int maxQueueSize = 500;   static const Duration flushInterval = Duration(seconds: 30);    DataPipeline({required this.uploader, required this.ownerId, required this.wid, this.isOrg = false}) {     _drainCacheOnStart();     _startAutoFlush();   }    void add(SensorPacket packet) {     if (_queue.length >= maxQueueSize) {       _queue.removeFirst();   // prevents infinite memory growth     }     _queue.add(packet);   }    void _startAutoFlush() {     _flushTimer?.cancel();     _flushTimer = Timer.periodic(flushInterval, (_) => flush());   }    Future<void> flush() async {     if (_uploading || _queue.isEmpty) return;     _uploading = true;      try {       while (_queue.isNotEmpty && _batch.length < batchSize) {         _batch.add(_queue.removeFirst());       }        if (_batch.isEmpty) return;        await uploader.uploadBatch(ownerId: ownerId, wid: wid, packets: List.from(_batch));       _batch.clear();     } catch (e) {       if (kDebugMode) logStep("PIPELINE", "Upload FAILED, re-queueing: $e");       await cache.addBatch(_batch);        // delay before retrying       await Future.delayed(const Duration(seconds: 2));        // put back on front (offline-safe)       _queue.addAll(_batch);       _batch.clear();     } finally {       _uploading = false;     }   }    Future<void> _drainCacheOnStart() async {     if (await cache.hasData()) {       final cached = await cache.drain();       _queue.addAll(cached);     }   }    void dispose() {     _flushTimer?.cancel();   } }
     sensor_packet.dart
-        class SensorPacket {
-            final double heartRate;
-            final double hrv;
-            final double temp;
-            final double motion;
-            final double sleepQuality;
-            final double sleepTime;
-            SensorPacket({
-                required this.heartRate,
-                required this.hrv,
-                required this.temp,
-                required this.motion,
-                required this.sleepQuality,
-                required this.sleepTime,
-            });
-            Map<String, dynamic> toJson(String uid) => {
-                "user_id": uid,
-                "heart_rate": heartRate,
-                "hrv": hrv,
-                "temp": temp,
-                "motion": motion,
-                "sleep_quality": sleepQuality,
-                "sleep_time": sleepTime,
-            };
-        }
+        class SensorPacket {     final double heartRate;     final double hrv;     final double temp;     final double motion;     final double sleepQuality;     final double sleepTime;      SensorPacket({         required this.heartRate,         required this.hrv,         required this.temp,         required this.motion,         required this.sleepQuality,         required this.sleepTime,     });      Map<String, dynamic> toJson(String uid) => {         "user_id": uid,         "heart_rate": heartRate,         "hrv": hrv,         "temp": temp,         "motion": motion,         "sleep_quality": sleepQuality,         "sleep_time": sleepTime,     };      factory SensorPacket.fromJson(Map<String, dynamic> json) {       return SensorPacket(         heartRate: (json["heart_rate"] ?? 0).toDouble(),          hrv: (json["hrv"] ?? 0).toDouble(),          temp: (json["temp"] ?? 0).toDouble(),          motion: (json["motion"] ?? 0).toDouble(),          sleepQuality: (json["sleep_quality"] ?? 0).toDouble(),          sleepTime: (json["sleep_time"] ?? 0).toDouble(),       );     } }
     uploader.dart
-        import 'dart:convert';
-        import 'package:http/http.dart' as http;
-        import 'sensor_packet.dart';
-        import 'package:cloud_firestore/cloud_firestore.dart';
-        class VigilUploader {
-            final String apiBase;
-            final String token;
-            VigilUploader(this.apiBase, this.token);
-            Future<void> upload(SensorPacket packet, String uid) async {
-                final res = await http.post(
-                    Uri.parse('$apiBase/data/upload'),
-                    headers: {
-                        "Authorization": "Bearer $token",
-                        "Content-Type": "application/json",
-                    },
-                    body: jsonEncode(packet.toJson(uid)),
-                );
-                if (res.statusCode != 200) {
-                    throw Exception(res.body);
-                }
-            }
-        }
-        class FirestoreUploader {
-            final FirebaseFirestore _db;
-            FirestoreUploader({FirebaseFirestore? firestore})
-                : _db = firestore ?? FirebaseFirestore.instance;
-            // Registers a wearable to user
-            Future<void> registerWearable({required String uid, required String wearableId, required String type}) async {
-                final userSnap = await _db.collection('users').doc(uid).get();
-                final String? orgId = userSnap.data()?['orgId'];
-                final WriteBatch batch = _db.batch();
-                // Global wearable record
-                batch.set(
-                    _db.collection('wearables').doc(wearableId),
-                    {
-                        'wearableId': wearableId,
-                        'ownerUid': uid,
-                        'orgId': orgId,
-                        'type': type,
-                        'assignedTo': uid,
-                        'active': true,
-                        'online': true,
-                        'pairedAt': FieldValue.serverTimestamp(),
-                    }, 
-                    SetOptions(merge: true),
-                );
-                // User-scoped wearable reference
-                batch.set(
-                    _db.collection('users').doc(uid).collection('wearables').doc(wearableId),
-                    {
-                        'wearableId': wearableId,
-                        'type': type,
-                        'pairedAt': FieldValue.serverTimestamp(),
-                        'active': true,
-                    }, 
-                    SetOptions(merge: true),
-                );
-                await batch.commit();
-            }
-            // Uploads telemetry
-            Future<void> uploadTelemetry({required SensorPacket packet, required String uid, required String wearableId}) async {
-                final telemetryRef = _db.collection('users').doc(uid).collection('wearables').doc(wearableId).collection('telemetry').doc();
-                await telemetryRef.set({
-                    'ts': FieldValue.serverTimestamp(),
-                    'heartRate': packet.heartRate,
-                    'hrv': packet.hrv,
-                    'temp': packet.temp,
-                    'motion': packet.motion,
-                    'sleepQuality': packet.sleepQuality,
-                    'sleepTime': packet.sleepTime,
-                });
-                // Heartbeat update
-                await _db.collection('wearables').doc(wearableId).update({
-                    'lastSeen': FieldValue.serverTimestamp(),
-                    //'battery': batteryLevel,
-                    'online': true,    
-                });
-            }
-        }
-
-notifications
-
+        import 'dart:convert'; import 'package:flutter/foundation.dart'; import 'package:http/http.dart' as http; import 'package:vigil_collector/logger.dart'; import 'sensor_packet.dart'; import 'package:cloud_firestore/cloud_firestore.dart';  class VigilUploader {     final String apiBase;     final String token;      VigilUploader(this.apiBase, this.token);      Future<void> upload(SensorPacket packet, String uid) async {         final res = await http.post(             Uri.parse('$apiBase/data/upload'),             headers: {                 "Authorization": "Bearer $token",                 "Content-Type": "application/json",             },             body: jsonEncode(packet.toJson(uid)),         );          if (res.statusCode != 200) {             throw Exception(res.body);         }     } }  class FirestoreUploader {     final FirebaseFirestore _db;     String? _cachedName;     String? _cachedOrgId;     String? _lastCachedUid;      FirestoreUploader({FirebaseFirestore? firestore}) : _db = firestore ?? FirebaseFirestore.instance;      // Registers a wearable to user     Future<void> registerWearable({required String uid, required String wearableId, required String type}) async {         final userSnap = await _db.collection('users').doc(uid).get();         final String? orgId = userSnap.data()?['orgId'];          final WriteBatch batch = _db.batch();                  // Global wearable record         batch.set(             _db.collection('wearables').doc(wearableId),             {                 'wearableId': wearableId,                 'orgId': orgId,                 'type': type,                 'assignedTo': uid,                 'pairedAt': FieldValue.serverTimestamp(),                 'status': {                     'active': true,                     'online': true,                     'batteryPct': 0,                     'lastSeen': FieldValue.serverTimestamp(),                 }             },              SetOptions(merge: true),         );          // User-scoped wearable reference         batch.set(             _db.collection('users').doc(uid).collection('wearables').doc(wearableId),             {                 'wearableId': wearableId,                 'type': type,                 'pairedAt': FieldValue.serverTimestamp(),                 'active': true,             },              SetOptions(merge: true),         );          await batch.commit();     }      // Uploads telemetry     Future<void> _uploadTelemetry({required SensorPacket packet, required String uid, required String wearableId}) async {         final telemetryRef = _db.collection('users').doc(uid).collection('wearables').doc(wearableId).collection('telemetry').doc();                  final upload = {             'ts': FieldValue.serverTimestamp(),             'heartRate': packet.heartRate,             'hrv': packet.hrv,             'temp': packet.temp,             'motion': packet.motion,             'sleepQuality': packet.sleepQuality,             'sleepTime': packet.sleepTime,         };          // creates new telemetry upload         await telemetryRef.set(upload);          // updates the user's latest metrics         await _db.collection('users').doc(uid).set({"latestMetrics": upload}, SetOptions(merge: true));          // Heartbeat update         await _db.collection('wearables').doc(wearableId).set({           'status': {             'lastSeen': FieldValue.serverTimestamp(),             //'batteryPct': packet.batteryPct,             'online': true,               }         }, SetOptions(merge: true));     }      Future<void> uploadBatch({required String ownerId, required String wid, required List<SensorPacket> packets, bool isOrg = false}) async {       if (packets.isEmpty) return;        final base = isOrg ? _db.collection('orgs').doc(ownerId) : _db.collection('users').doc(ownerId);       final batch = _db.batch();       final telemetryCol = base.collection('wearables').doc(wid).collection('telemetry');        for (final p in packets) {         final ref = telemetryCol.doc();          batch.set(ref, {           'ts': FieldValue.serverTimestamp(),           'heartRate': p.heartRate,           'hrv': p.hrv,           'temp': p.temp,           'motion': p.motion,           'sleepQuality': p.sleepQuality,           'sleepTime': p.sleepTime,         });       }        final last = packets.last;        // single update       batch.set(_db.collection('users').doc(ownerId), {         'latestMetrics': {           'ts': FieldValue.serverTimestamp(),           'heartRate': last.heartRate,           'hrv': last.hrv,           'temp': last.temp,           'motion': last.motion,           'sleepQuality': last.sleepQuality,           'sleepTime': last.sleepTime,         }       }, SetOptions(merge: true));       batch.set(_db.collection('wearables').doc(wid), {         'status': {           'online': true,           'lastSeen': FieldValue.serverTimestamp(),         }       }, SetOptions(merge: true));       await batch.commit();        // run danger detection on last sample only       _evalRealtimeTelemetry(ownerId, wid, last);     }      Future<void> ingestTelemetry({required String uid, required String wid, required SensorPacket packet}) async {         // realtime danger eval         _evalRealtimeTelemetry(uid, wid, packet);          // write telemetry         _uploadTelemetry(packet:packet, uid:uid, wearableId:wid);     }      void _evalRealtimeTelemetry(String uid, String wid, SensorPacket packet) {         final hr = packet.heartRate;         final hrv = packet.hrv;         final temp = packet.temp;          // Immediate Danger Thresholds (Conservative)         if (hr >= 140) {             _emitNotification(uid:uid, wid:wid, atype:"tachycardia", severity:"critical", msg:"Dangerously high heart rate", immediate:true);         }         if (hrv > 0 && hrv < 15) {             _emitNotification(uid:uid, wid:wid, atype:"autonomic_collapse", severity:"critical", msg:"Severe HRV suppression", immediate:true);         }         if (temp >= 39) {             _emitNotification(uid:uid, wid:wid, atype:"heat_stroke_risk", severity:"critical", msg:"POSSIBLE HEAT STROKE - immediate cooling required", immediate:true);         } else if (temp >= 38.5) {             _emitNotification(uid:uid, wid:wid, atype:"heat_danger", severity:"critical", msg:"Dangerous body temperature detected", immediate:true);         } else if (temp >= 38) {             _emitNotification(uid:uid, wid:wid, atype:"heat_warning", severity:"warning", msg:"Elevated core temperature", immediate:true);         }     }      Future<void> _emitNotification({required String uid, required String wid, required String atype, required String severity, required String msg, bool immediate=false}) async {         String? orgId = _cachedOrgId;         String name = _cachedName ?? uid;          if (_lastCachedUid != uid || _cachedOrgId == null || _cachedName == null) {             try {                 final userDoc = await _db.collection("users").doc(uid).get();                 final data = userDoc.data();                                  orgId = data?["orgId"];                 name = data?["profile"]?["name"] ?? uid;                  // update cache                 _cachedName = name;                 _cachedOrgId = orgId;                 _lastCachedUid = uid;             } catch (e) {               if (kDebugMode) logStep("UPLOAD", "Error fetching user orgId: $e");               name = uid;             }         }          final Map<String, dynamic> payload = {             "type": atype,             "severity": severity,             "message": msg,             "uid": uid,             "name": name,             "wearableId": wid,             "immediate": immediate,             "source": "system",             "ts": FieldValue.serverTimestamp(),             "read": false,             "verified": false,             "verificationOutcome": "",             "verifiedBy": "",         };          // User Notification         final WriteBatch batch = _db.batch();          final userNotiRef = _db.collection("notifications").doc();         batch.set(userNotiRef, {             ...payload,             "to": uid,         });          // Org Notification         if (orgId != null && orgId.isNotEmpty) {             final orgNotiRef = _db.collection("notifications").doc();             batch.set(orgNotiRef, {                 ...payload,                 "to": orgId,             });         }                  // execute writes         try {             await batch.commit();         } catch (e) {           if (kDebugMode) logStep("UPLOAD", "Failed to emit notifications: $e");         }     } }
+    wearable_storage.dart
+        import 'package:shared_preferences/shared_preferences.dart';  class WearableStorage {   static const _key = "paired_device_id";   static const _last = "last_device";    static Future<void> save(String id) async {     final prefs = await SharedPreferences.getInstance();     await prefs.setString(_key, id);   }    static Future<String?> load() async {     final prefs = await SharedPreferences.getInstance();     return prefs.getString(_key);   }    static Future<void> clear() async {     final prefs = await SharedPreferences.getInstance();     await prefs.remove(_key);   }    static Future<void> saveLastDevice(String id) async {     final prefs = await SharedPreferences.getInstance();     await prefs.setString(_last, id);   }    static Future<String?> getLastDevice() async {     final prefs = await SharedPreferences.getInstance();     return prefs.getString(_last);   } }
 ui
-    connect_wearable_page.dart
-        import 'dart:async';
-        import 'package:flutter/material.dart';
-        import 'package:firebase_auth/firebase_auth.dart';
-        import '../wearables/ble_service.dart';
-        import '../wearables/mock_wearable_service.dart';
-        import '../data/uploader.dart';
-        import 'package:flutter/foundation.dart' show kIsWeb;
-        class ConnectWearablePage extends StatefulWidget {
-            final String uid;
-            const ConnectWearablePage({required this.uid, super.key});
-            @override
-            State<ConnectWearablePage> createState() => _ConnectWearablePageState();
-        }
-        class _ConnectWearablePageState extends State<ConnectWearablePage> {
-            final ble = kIsWeb
-                ? MockWearableService()
-                : BleWearableService();
-            StreamSubscription? sub;
-            String status = "Idle";
-            @override
-            void initState() {
-                super.initState();
-                _start();
-            }
-            Future<void> _start() async {
-                try {
-                    setState(() => status = "Connecting...");
-                    await ble.connect();
-                    final token = await FirebaseAuth.instance.currentUser!.getIdToken();
-                    final uploader = FirestoreUploader();
-                    // Register device once
-                    await uploader.registerWearable(uid: widget.uid, wearableId: ble.deviceId, type: 'G69');
-                    DateTime _lastUpload = DateTime.fromMillisecondsSinceEpoch(0);
-                    sub = ble.stream.listen((packet) async {
-                        final now = DateTime.now();
-                        if (now.difference(_lastUpload).inSeconds < 15) return;  // data upload throttle
-                        _lastUpload = now;
-                        
-                        setState(() => status = "Uploading...");
-                        await uploader.uploadTelemetry(packet: packet, uid: widget.uid, wearableId: ble.deviceId ?? "unknown_device");
-                        setState(() => status = "Connected");
-                    });
-                } catch (e) {
-                    setState(() => status = "Connection failed. Retrying...");
-                    print(e);
-                    await Future.delayed(const Duration(seconds: 3));
-                    if (mounted) _start();  // auto retry
-                }
-            }
-            @override
-            void dispose() {
-                sub?.cancel();
-                ble.disconnect();
-                super.dispose();
-            }
-            @override
-            Widget build(BuildContext context) {
-                return Scaffold(
-                    appBar: AppBar(title: const Text("Wearable Status")),
-                    body: Center(
-                        child: Text(status, style: const TextStyle(fontSize: 20)),
-                    ),
-                );
-            }
-        }
-
+    widgets
+        connected_view.dart
+            import 'package:flutter/material.dart'; import 'package:vigil_collector/data/sensor_packet.dart'; import 'package:vigil_collector/wearables/wearable_manager.dart';  class ConnectedView extends StatelessWidget {   final String deviceId;   final DateTime? lastUpload;   final SensorPacket? lastPacket;   final WearableState status;    final VoidCallback onUnpair;    const ConnectedView({super.key, required this.deviceId, required this.lastUpload, required this.lastPacket, required this.status, required this.onUnpair});    @override   Widget build(BuildContext context) {     final hr = lastPacket?.heartRate.toStringAsFixed(0) ?? "--";     final temp = lastPacket?.temp.toStringAsFixed(1) ?? "--";     final motion = lastPacket?.motion.toStringAsFixed(1) ?? "--";      return Padding(       padding: const EdgeInsets.all(24),       child: Column(         mainAxisAlignment: MainAxisAlignment.center,         children: [           Text("WEARABLE STATUS", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 25, letterSpacing: 6)),            const SizedBox(height: 20),           _statusIndicator(),            const SizedBox(height: 30),                      Text("DEVICE ID", style: TextStyle(fontSize: 18, letterSpacing: 2, color: Colors.grey[400])),           SizedBox(height: 6),           Text(deviceId.isNotEmpty ? deviceId : "Unknown", style: TextStyle(fontSize: 14)),            const SizedBox(height: 16),           if (lastUpload != null)             Text("Last Sync:   ${lastUpload!.toLocal()}", style: TextStyle(fontSize: 12, color: Colors.grey[500])),                      const SizedBox(height: 30),           Row(             mainAxisAlignment: MainAxisAlignment.spaceEvenly,             children: [               _metric("HR", hr),               _metric("TEMP", "$temp°C"),               _metric("MOTION", motion),             ],           ),                      const SizedBox(height: 40),            TextButton(             onPressed: onUnpair,              child: const Text("Forget Device", style: TextStyle(color: Colors.grey)),           ),         ],       ),     );   }    Widget _metric(String label, String value) {     return Column(       children: [         Text(label, style: TextStyle(color: Colors.grey[400], fontSize: 12)),         SizedBox(height: 4),         Text(value, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),       ],     );   }    Widget _statusIndicator() {     Color color;     String text;     IconData icon;      switch (status) {       case WearableState.connecting:         color = Colors.orange;         text = "Connecting";         icon = Icons.hourglass_empty;         break;       case WearableState.connected:         color = Colors.green;         text = "Connected";         icon = Icons.check_circle;         break;       default:         color = Colors.grey;         text = "Idle";         icon = Icons.pause_circle;   }      return Row(       mainAxisAlignment: MainAxisAlignment.center,       children: [         Icon(icon, color: color),         const SizedBox(width: 8),         Text(text, style: TextStyle(fontSize: 20, color: color)),       ],     );   } }
+        scan_list.dart
+            import 'package:flutter/material.dart'; import 'package:flutter_blue_plus/flutter_blue_plus.dart';  class ScanList extends StatelessWidget {   final List<ScanResult> devices;   final Function(BluetoothDevice) onTap;   final bool Function(ScanResult) isVigil;    const ScanList({super.key, required this.devices, required this.onTap, required this.isVigil});    String signalLabel(int rssi) {     if (rssi > -60) return "Strong";     if (rssi > -75) return "Good";     return "Weak";   }    @override   Widget build(BuildContext context) {     if (devices.isEmpty) {       return Center(         child: Column(           mainAxisAlignment: MainAxisAlignment.center,           children: [             CircularProgressIndicator(),             SizedBox(height: 16),             Text("Scanning for nearby devices..."),           ],         ),       );     }     devices.sort((a, b) => b.rssi.compareTo(a.rssi));     //final top3 = devices.take(3).toList();      // priotize best signal      return ListView.builder(       itemCount: devices.length,       itemBuilder: (_, i) {         final d = devices[i];         final vigil = isVigil(d);          String displayName = d.device.name.isNotEmpty ? d.device.name : "Unknown Device";         if (vigil) displayName = "VIGIL • $displayName";          return ListTile(           title: Text(displayName),           subtitle: Text("Signal: ${signalLabel(d.rssi)} (${d.rssi} dBm)"),           trailing: const Icon(Icons.bluetooth),           leading: i == 0 ? Icon(Icons.star, color: Colors.amber) : null,           onTap: () => onTap(d.device),         );       },     );   } }
+    connect_page.dart
+        import 'dart:async'; import 'package:flutter/foundation.dart'; import 'package:flutter/material.dart'; import 'package:firebase_auth/firebase_auth.dart'; import 'package:flutter_blue_plus/flutter_blue_plus.dart'; import 'package:flutter/foundation.dart' show kIsWeb;  import 'package:vigil_collector/data/data_pipeline.dart'; import 'package:vigil_collector/logger.dart'; import 'package:vigil_collector/ui/widgets/connected_view.dart'; import 'package:vigil_collector/ui/widgets/scan_list.dart'; import 'package:vigil_collector/wearables/wearable_manager.dart'; import '../wearables/ble_service.dart'; import '../wearables/mock_wearable_service.dart'; import '../data/uploader.dart'; import '../data/sensor_packet.dart';  class ConnectWearablePage extends StatefulWidget {     final String uid;     const ConnectWearablePage({required this.uid, super.key});      @override     State<ConnectWearablePage> createState() => _ConnectWearablePageState(); }  class _ConnectWearablePageState extends State<ConnectWearablePage> {     late final WearableManager manager;      StreamSubscription? stateSub;     StreamSubscription? dataSub;     StreamSubscription? deviceSub;          DateTime? lastUpload;     SensorPacket? lastPacket;      DataPipeline? pipeline;      WearableState mode = WearableState.scanning;     List<ScanResult> devices = [];      bool _registered = false;     late final FirestoreUploader uploader;       @override     void initState() {       super.initState();        final ble = kIsWeb ? MockWearableService() : BleWearableService();       manager = WearableManager(ble);        _init();     }      Future<void> _init() async {       uploader = FirestoreUploader();        stateSub = manager.state.listen((state) async {         if (!mounted) return;         if (mode != state) setState(() => mode = state);          // register after connect         if ((state == WearableState.connected) && !_registered) {           _registered = true;                      final wid = manager.ble.deviceId;           if (wid == "unknown_device") return;                      try {             await uploader.registerWearable(               uid: widget.uid,                wearableId: wid,                type: "heart_rate_monitor",             );              pipeline?.dispose();             pipeline = DataPipeline(uploader: uploader, ownerId: widget.uid, wid: wid);              if (kDebugMode) logStep("CONNECT", "Wearable registered: $wid");           } catch (e) {             if (kDebugMode) logStep("CONNECT", "Registration FAILED: $e");             _registered = false;           }         }          if (state == WearableState.scanning) {           _registered = false;         }       });        deviceSub = manager.devices.listen((list) async {         if (!mounted) return;         setState(() => devices = list);          // AUTO-CONNECT LOGIC         if (mode == WearableState.scanning && list.isNotEmpty) {           final best = list.first;            // connection to VIGIL devices only           if (_isVigilWearable(best)) {             await manager.connectToDevice(best.device);           }         }       });        dataSub = manager.data.listen((packet) async {         lastPacket = packet;         if (_isValidPacket(packet)) {           pipeline?.add(packet);         }          if (mounted) {           setState(() => lastUpload = DateTime.now());         }       });        smartStartup();     }      bool _isValidPacket(SensorPacket p) {       return p.heartRate > 0 || p.temp > 0 || p.motion > 0 || p.hrv > 0;     }      bool _isVigilWearable(ScanResult r) {       final name = r.device.name.toUpperCase();       final adv = r.advertisementData.advName.toUpperCase();       return (         name.contains("VIGIL") || adv.contains("VIGIL") ||                  name.startsWith("H303") || adv.startsWith("H303") ||         name.startsWith("HW706") || adv.startsWith("HW706")       );     }      Future<void> smartStartup() async {       // Stage 1: silent reconnect attempt (fast)       final s = await manager.reconnect();       if (s) return;        // Stage 2: background scan (no UI switch yet)       await manager.startScan(silent: true);        // Stage 3: after delay, show device list       Future.delayed(const Duration(seconds: 25), () {         manager.enableScanUI();       });     }      Future<void> _logout() async {       dispose();       await manager.ble.disconnect();       await FirebaseAuth.instance.signOut();        if (!mounted) return;       Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);     }      @override     void dispose() {       deviceSub?.cancel();       stateSub?.cancel();       dataSub?.cancel();       pipeline?.dispose();        manager.dispose();       super.dispose();     }      @override     Widget build(BuildContext context) {         Widget body;          switch (mode) {           case WearableState.scanning:             body = manager.shouldShowScanUI               ? ScanList(                   devices: devices,                    isVigil: _isVigilWearable,                    onTap: (device) async {                     await manager.connectToDevice(device);                   },               )               : _scanningView();              break;            case WearableState.connecting:             body = const Center(               child: Column(                 mainAxisAlignment: MainAxisAlignment.center,                 children: [                   CircularProgressIndicator(),                   SizedBox(height: 16),                   Text("Connecting..."),                 ],               )             );             break;            case WearableState.connected:             body = ConnectedView(               deviceId: manager.ble.deviceId,                lastUpload: lastUpload,                lastPacket: lastPacket,                status: mode,                onUnpair: manager.ble.disconnect,             );             break;         }          return Scaffold(           appBar: AppBar(             title: Row(               children: [                 Image.asset('assets/VIGIL_logo_white.png', width: 60, height: 60),                 SizedBox(width: 12),                 Text("VIGIL CONNECT", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, letterSpacing: 3)),               ],             ),             actions: [               IconButton(                 icon: Icon(Icons.logout),                 onPressed: _logout,               ),             ],           ),           body: body,         );     } }  Widget _scanningView() {   return const Center(     child: Column(       mainAxisAlignment: MainAxisAlignment.center,       children: [         CircularProgressIndicator(),         SizedBox(height: 16),         Text("Connecting to your device..."),       ],     ),   ); }
+    org_gateway_page.dart
+        import 'package:flutter/material.dart'; import 'package:flutter_blue_plus/flutter_blue_plus.dart'; import 'package:vigil_collector/data/uploader.dart'; import 'package:vigil_collector/wearables/gateway_manager.dart';  class OrgGatewayPage extends StatefulWidget {   final String orgId;    const OrgGatewayPage({required this.orgId, super.key});    @override   State<OrgGatewayPage> createState() => _OrgGatewayPageState(); }  class _OrgGatewayPageState extends State<OrgGatewayPage> {   late GatewayManager gateway;   final List<ScanResult> devices = [];    @override   void initState() {     super.initState();      final uploader = FirestoreUploader();      gateway = GatewayManager(uploader: uploader, orgId: widget.orgId);     _startScan();   }    Future<void> _startScan() async {     await FlutterBluePlus.startScan(timeout: const Duration(seconds: 10));      FlutterBluePlus.scanResults.listen((results) {       setState(() {         devices.clear();         devices.addAll(results);       });     });   }    Future<void> _connect(BluetoothDevice device) async {     await gateway.addDevice(device);     setState(() {});   }    @override   Widget build(BuildContext context) {     return Scaffold(       appBar: AppBar(         title: Text("ORG GATEWAY"),       ),       body: Column(         children: [           Expanded(             child: ListView.builder(               itemCount: devices.length,               itemBuilder: (_, i) {                 final d = devices[i];                  return ListTile(                   title: Text(d.device.name.isNotEmpty ? d.device.name : "Unknown Device"),                   subtitle: Text(d.device.remoteId.str),                   onTap: () => _connect(d.device),                 );               },             ),           ),           const Divider(),            Text("Connected Devices:"),           ...gateway.connectedIds.map((id) => Text(id)).toList(),         ],       ),     );   } }
 wearables
     ble_service.dart
-        import 'dart:async';
-        import 'dart:typed_data';
-        import 'package:flutter_blue_plus/flutter_blue_plus.dart';
-        import '../data/sensor_packet.dart';
-        import 'wearable_service.dart';
-        import 'package:flutter/foundation.dart' show kIsWeb;
-        const String G69_UART_SERVICE = "6E40FFF0-B5A3-F393-E0A9-E50E24DCCA9E";
-        const String G69_UART_RX = "6E400002-B5A3-F393-E0A9-E50E24DCCA9E";
-        const String G69_UART_TX = "6E400003-B5A3-F393-E0A9-E50E24DCCA9E";
-        class BleWearableService implements WearableService {
-        BluetoothDevice? _device;
-        BluetoothCharacteristic? _rx;
-        BluetoothCharacteristic? _tx;
-        @override
-        String get deviceId => _device?.remoteId.str ?? "unknown_device";
-        final _controller = StreamController<SensorPacket>.broadcast();
-        final List<int> _buffer = [];
-        // last known values
-        double _hr = 0;
-        double _motion = 0;
-        double _temp = 0;
-        double _sleepQuality = 0;
-        double _sleepTime = 0;
-        @override
-        Stream<SensorPacket> get stream => _controller.stream;
-        @override
-        Future<void> connect() async {
-            if (kIsWeb) {
-                throw UnsupportedError("BLE wearables are not supported on Web. Please use the mobile Collector app.");
-            }
-            await FlutterBluePlus.startScan(timeout: const Duration(seconds: 10));
-            await for (final results in FlutterBluePlus.scanResults) {
-            for (final r in results) {
-                if (_isVigilWearable(r.device)) {
-                await FlutterBluePlus.stopScan();
-                _device = r.device;
-                await _device!.connect(autoConnect: false);
-                await _discoverServices();
-                await _startStreaming();
-                return;
-                }
-            }
-            }
-            throw Exception("No Vigil wearable found");
-        }
-        bool _isVigilWearable(BluetoothDevice device) {
-            final name = device.name.toUpperCase();
-            return name.contains("G69") || name.contains("VIGIL");
-        }
-        Future<void> _discoverServices() async {
-            final services = await _device!.discoverServices();
-            for (final s in services) {
-            if (s.uuid.toString().toUpperCase() == G69_UART_SERVICE) {
-                for (final c in s.characteristics) {
-                final uuid = c.uuid.toString().toUpperCase();
-                if (uuid == G69_UART_RX) _rx = c;
-                if (uuid == G69_UART_TX) _tx = c;
-                }
-            }
-            }
-            if (_rx == null || _tx == null) {
-            throw Exception("G69 UART characteristics not found");
-            }
-            await _tx!.setNotifyValue(true);
-            _tx!.value.listen(_onNotify);
-        }
-        Future<void> _startStreaming() async {
-            // Known G69 "start stream" command
-            final cmd = Uint8List.fromList([0xA0, 0x01, 0x01, 0xAF]);
-            await _rx!.write(cmd, withoutResponse: true);
-        }
-        void _onNotify(List<int> data) {
-            _buffer.addAll(data);
-            while (_buffer.length >= 6) {
-            final frame = _buffer.sublist(0, 6);
-            _buffer.removeRange(0, 6);
-            _parseFrame(frame);
-            }
-        }
-        void _parseFrame(List<int> frame) {
-            final type = frame[1];
-            switch (type) {
-            case 0x01: // Heart Rate
-                _hr = frame[3].toDouble();
-                break;
-            case 0x02: // Motion
-                _motion = frame[3].toDouble();
-                break;
-            case 0x03: // Temp
-                _temp = frame[3] / 10.0;
-                break;
-            case 0x04: // Sleep
-                _sleepQuality = frame[3].toDouble();
-                _sleepTime = frame[4].toDouble();
-                break;
-            }
-            _controller.add(
-            SensorPacket(
-                heartRate: _hr,
-                hrv: 0,
-                temp: _temp,
-                motion: _motion,
-                sleepQuality: _sleepQuality,
-                sleepTime: _sleepTime,
-            ),
-            );
-        }
-        @override
-        Future<void> disconnect() async {
-            await _device?.disconnect();
-        }
-        }
+        import 'dart:async'; import 'package:flutter/foundation.dart'; import 'package:flutter_blue_plus/flutter_blue_plus.dart';  import 'package:vigil_collector/data/wearable_storage.dart'; import 'package:vigil_collector/logger.dart'; import 'package:vigil_collector/wearables/cmd_builder.dart'; import '../data/sensor_packet.dart'; import 'package:vigil_collector/wearables/protocols.dart'; import 'wearable_service.dart';  class BleWearableService implements WearableService {   BluetoothDevice? _device;    BleProtocol _protocol = UnknownProtocol();    BluetoothCharacteristic? _writeChar;   List<BluetoothCharacteristic> _notifyChars = [];    StreamSubscription? _notifySub;   StreamSubscription? _connectSub;   StreamSubscription? _scanResultsSub;    final _dataController = StreamController<SensorPacket>.broadcast();   final _scanController = StreamController<List<ScanResult>>.broadcast();    Timer? _keepAliveTimer;    DateTime _lastWrite = DateTime.fromMillisecondsSinceEpoch(0);    bool _isStreaming = false;   bool _isConnecting = false;    @override   Stream<SensorPacket> get stream => _dataController.stream;    @override   Stream<List<ScanResult>> get scanStream => _scanController.stream;      @override   String get deviceId => _device?.remoteId.str ?? "unknown_device";     // ----------- CONNECT ------------    @override   Future<bool> connect() async {     if (kIsWeb) throw UnsupportedError("BLE wearables are not supported on Web. Please use the mobile Collector app.");     if (_device == null || _isConnecting) return false;     _isConnecting = true;      try {       await _ensureAdapterOn();        await _device!.connect(         timeout: const Duration(seconds: 8),         autoConnect: false,         license: License.free,       );        _listenConnectState();       await _setup();        await WearableStorage.saveLastDevice(_device!.remoteId.str);        return true;     } catch (e) {       if (kDebugMode) logStep("BLE", "Connect FAIL: $e");       return false;     } finally {       _isConnecting = false;     }   }    void _listenConnectState() {     _connectSub?.cancel();     _connectSub = _device!.connectionState.listen((state) async {       if (state == BluetoothConnectionState.disconnected) {         if (kDebugMode) logStep("BLE", "STATE: $state - Reason: ${_device!.disconnectReason}");          final lastId = _device?.remoteId.str;          _cleanupConnection();          // auto-reconnect         if (lastId != null) {           await Future.delayed(const Duration(seconds: 4));            try {             _device = BluetoothDevice.fromId(lastId);             if (kDebugMode) logStep("BLE", "Auto-reconnecting");             await connect();           } catch (e) {             if (kDebugMode) logStep("BLE", "Auto-reconnect FAIL: $e");           }         }       }     });   }    Future<void> _ensureAdapterOn() async {     await FlutterBluePlus.adapterState.where((s) => s == BluetoothAdapterState.on).first;   }    @override   Future<void> connectToDevice(BluetoothDevice device) async {     _device = device;     await connect();   }    @override   Future<bool> reconnectLastDevice() async {     final wid = await WearableStorage.getLastDevice();     if (wid == null) return false;      try {       _device = BluetoothDevice.fromId(wid);       if (kDebugMode) logStep("BLE", "Reconnecting to $wid");       return await connect();     } catch (e) {       if (kDebugMode) logStep("BLE", "Reconnect FAIL: $e");       return false;     }   }    @override   Future<void> disconnect() async {     final d = _device;     _cleanupConnection();      await d?.disconnect();     await WearableStorage.clear();      if (kDebugMode) logStep("BLE", "Disconnect SUCCESS");   }    void _cleanupConnection() {     _protocol = UnknownProtocol();      _notifyChars.clear();     _writeChar = null;      _notifySub?.cancel();     _connectSub?.cancel();     _keepAliveTimer?.cancel();      _isStreaming = false;   }    // ----------- SCAN ------------    @override   Future<void> startScan() async {     await FlutterBluePlus.adapterState.where((state) => state == BluetoothAdapterState.on).first;     await FlutterBluePlus.startScan(timeout: const Duration(seconds: 10));      _scanResultsSub?.cancel();     _scanResultsSub = FlutterBluePlus.scanResults.listen((results) async {       final nearby = results.where((r) => r.rssi > -90).toList()..sort((a, b) => b.rssi.compareTo(a.rssi));       final vigilDevices = results.where((r) => _isVigilWearable(r)).toList()..sort((a, b) => b.rssi.compareTo(a.rssi));                    _scanController.add(vigilDevices.isNotEmpty ? vigilDevices : nearby);     });   }    @override   Future<void> stopScan() async {     await FlutterBluePlus.stopScan();     await _scanResultsSub?.cancel();   }        bool _isVigilWearable(ScanResult r) {     final name = r.device.name.toUpperCase();     final adv = r.advertisementData.advName.toUpperCase();     return (       name.contains("VIGIL") || adv.contains("VIGIL") ||       name.contains("H303") || adv.contains("H303") ||       name.contains("H6") || adv.contains("H6") ||       name.contains("HW706") || adv.contains("HW706")     );   }    // ----------- SETUP ------------    Future<void> _setup() async {     try {       await _discoverServices();       await _enableNotify();        if (_writeChar != null && !_isStreaming) {         await _startStreaming();       }     } catch (e) {       if (kDebugMode) logStep("BLE", "Setup FAIL: $e");     }   }    Future<void> _discoverServices() async {     _notifyChars.clear();     _writeChar = null;      final services = await _device!.discoverServices();      for (final s in services) {       for (final c in s.characteristics) {         final props = c.properties;         final uuid = c.uuid.toString().toLowerCase();          // protocol selection         if (uuid.contains("2a37")) {           _protocol = HeartRateProtocol();           _notifyChars.add(c);         }          // notify         /*if (props.notify || props.indicate) {           _notifyChars.add(c);         }*/          // write         if (_writeChar == null && (props.writeWithoutResponse || props.write)) {           _writeChar = c;         }       }     }      if (_notifyChars.isEmpty) {       throw Exception("No notify characteristics found");     }   }    Future<void> _enableNotify() async {     await _notifySub?.cancel();      final streams = <Stream<List<int>>>[];          for (final c in _notifyChars) {       try {         await c.setNotifyValue(true);         streams.add(c.value);         if (kDebugMode) logStep("BLE", "LISTENING: ${c.uuid}");       } catch (e) {         if (kDebugMode) logStep("BLE", "NOTIFY FAIL: ${c.uuid} - $e");       }     }      //_notifySub = StreamGroup.merge(streams).listen(_onNotify);     _notifySub = _notifyChars.first.value.listen(_onNotify);   }    // ----------- STREAMING ------------    Future<void> _startStreaming() async {     if (_writeChar == null || _isStreaming) return;      _isStreaming = true;      // Step 1: wake command     await _write(CommandBuilder.packet(0xA5, [0x01]));     await Future.delayed(const Duration(milliseconds: 200));      // Step 2: unlock / mode switch     await _write(CommandBuilder.packet(0xA2, [0x01]));     await Future.delayed(const Duration(milliseconds: 300));      // Step 3: enable sensor system     await _write(CommandBuilder.packet(0xA0, [0xFF]));     await Future.delayed(const Duration(milliseconds: 500));      // Step 4: maintain stream     /*_keepAliveTimer?.cancel();     _keepAliveTimer = Timer.periodic(const Duration(seconds: 5), (_) async {       await _write(CommandBuilder.packet(0xA0, [0x03]));     });*/   }    Future<void> _write(Uint8List packet) async {     if (_writeChar == null) return;      final now = DateTime.now();     if (now.difference(_lastWrite).inMilliseconds < 600) return;     _lastWrite = now;      try {       await _writeChar!.write(packet, withoutResponse: true);     } catch (_) {       try {         await _writeChar!.write(packet, withoutResponse: false);       } catch (e) {         if (kDebugMode) logStep("BLE", "WRITE FAIL: $e");       }     }   }    // ----------- NOTIFY ------------    void _onNotify(List<int> data) {     if (!_dataController.hasListener) return;      // protocol fallback     if (_protocol is UnknownProtocol && data.isNotEmpty && data.first == 0x78) {       _protocol = VigilProtocol();     }      try {       _protocol.onData(data, _dataController);     } catch (e) {       if (kDebugMode) logStep("BLE", "PARSE ERROR: $e");     }   } }
+    cmd_builder.dart
+        import 'package:flutter/foundation.dart'; import 'package:vigil_collector/logger.dart';  class CommandBuilder {   static Uint8List packet(int type, List<int> payload) {     final len = payload.length + 1;     final data = <int>[0x78, len, type, ...payload];      int checksum = 0;     for (final d in data) {       checksum ^= d;     }      data.add(checksum & 0xFF);     if (kDebugMode) logStep("CMD BLDR", "Wrote data packet: $data");     return Uint8List.fromList(data);   }    // REAL COMMANDS   static Uint8List startRealTimeHR()  => packet(0x28, [0x01]);   static Uint8List stopRealTimeHR()   => packet(0x28, [0x02]);   static Uint8List holdRealTimeHR()   => packet(0x28, [0x03]); }
+    gateway_manager.dart
+        import 'package:flutter_blue_plus/flutter_blue_plus.dart'; import 'package:vigil_collector/data/data_pipeline.dart'; import 'package:vigil_collector/data/uploader.dart'; import 'package:vigil_collector/wearables/ble_service.dart'; import 'package:vigil_collector/wearables/wearable_manager.dart';  class GatewayManager {   final Map<String, WearableManager> devices = {};   final FirestoreUploader uploader;   final String orgId;    GatewayManager({required this.uploader, required this.orgId});    Future<void> addDevice(BluetoothDevice device) async {     final ble = BleWearableService();     final manager = WearableManager(ble);      await manager.connectToDevice(device);      final wid = ble.deviceId;     devices[wid] = manager;      final pipeline = DataPipeline(uploader: uploader, uid: orgId, wid: wid);     manager.data.listen((packet) {       pipeline.add(packet);     });   }    List<String> get connectedIds => devices.keys.toList(); }
     mock_wearable_service.dart
-        import 'dart:async';
-        import '../data/sensor_packet.dart';
-        import 'wearable_service.dart';
-        class MockWearableService implements WearableService {
-            final _controller = StreamController<SensorPacket>.broadcast();
-            Timer? _timer;
-            // Fake ID for web/testing
-            @override
-            String get deviceId => "MOCK-DEVICE-ID-123";
-            @override
-            Stream<SensorPacket> get stream => _controller.stream;
-            @override
-            Future<void> connect() async {
-                _timer = Timer.periodic(const Duration(seconds: 2), (_) {
-                    _controller.add(
-                        SensorPacket(
-                            heartRate: 60 + (10 * (DateTime.now().second % 3)),
-                            hrv: 42,
-                            temp: 36.8,
-                            motion: 1.2,
-                            sleepQuality: 80,
-                            sleepTime: 7.5,
-                        ),
-                    );
-                });
-            }
-            @override
-            Future<void> disconnect() async {
-                _timer?.cancel();
-            }
-        }
+        import 'dart:async'; import '../data/sensor_packet.dart'; import 'wearable_service.dart'; import 'package:flutter_blue_plus/flutter_blue_plus.dart';  class MockWearableService implements WearableService {     final _controller = StreamController<SensorPacket>.broadcast();     Timer? _timer;          // Fake ID for web/testing     @override     String get deviceId => "MOCK-DEVICE-ID-123";      @override     Stream<SensorPacket> get stream => _controller.stream;      @override     Future<bool> connect() async {         _timer = Timer.periodic(const Duration(seconds: 2), (_) {             _controller.add(                 SensorPacket(                     heartRate: 60 + (10 * (DateTime.now().second % 3)),                     hrv: 42,                     temp: 36.8,                     motion: 1.2,                     sleepQuality: 80,                     sleepTime: 7.5,                 ),             );         });         return true;     }      @override     Future<void> disconnect() async {         _timer?.cancel();     }      @override     Future<void> connectToDevice(BluetoothDevice device) async {       // mock implementation     }      @override     Stream<List<ScanResult>> get scanStream => Stream.value([]);      @override     Future<void> startScan() async {       // mock implementation     }      @override     Future<void> stopScan() async {       // mock implementation     }      @override   Future<bool> reconnectLastDevice() {     // TODO: implement reconnectLastDevice     throw UnimplementedError();   } }
+    packet_cache.dart
+        import 'dart:convert'; import 'package:shared_preferences/shared_preferences.dart'; import '../data/sensor_packet.dart';  class PacketCache {   static const _key = "packet_cache";    Future<void> addBatch(List<SensorPacket> packets) async {     final prefs = await SharedPreferences.getInstance();     final list = prefs.getStringList(_key) ?? [];      for (final p in packets) {       list.add(jsonEncode(p.toJson("offline")));     }      await prefs.setStringList(_key, list);   }    Future<List<SensorPacket>> drain() async {     final prefs = await SharedPreferences.getInstance();     final list = prefs.getStringList(_key) ?? [];      await prefs.remove(_key);      return list.map((e) => SensorPacket.fromJson(jsonDecode(e))).toList();   }    Future<bool> hasData() async {     final prefs = await SharedPreferences.getInstance();     return (prefs.getStringList(_key) ?? []).isNotEmpty;   } }
+    protocols.dart
+        import 'dart:async'; import 'package:vigil_collector/logger.dart'; import '../data/sensor_packet.dart'; import 'package:flutter/foundation.dart';   abstract class BleProtocol {   void onData(List<int> data, StreamController<SensorPacket> out); }  class UnknownProtocol implements BleProtocol {   @override   void onData(List<int> data, StreamController<SensorPacket> out) {     if (kDebugMode) logStep("BLE", "RAW: $data");   } }  class VigilProtocol implements BleProtocol {   final List<int> _buffer = [];    DateTime _lastEmit = DateTime.fromMillisecondsSinceEpoch(0);   DateTime _lastAbnormal = DateTime.fromMillisecondsSinceEpoch(0);    Duration _currentInterval = const Duration(seconds: 10);    @override   void onData(List<int> data, StreamController<SensorPacket> out) {     _buffer.addAll(data);      while (_buffer.length >= 3) {       if (_buffer.first != 0x78) {         _buffer.removeAt(0);         continue;       }        final len = _buffer[1];       final totalLen = len + 3;        if (_buffer.length < totalLen) break;        final frame = List<int>.from(_buffer.take(totalLen));       _buffer.removeRange(0, totalLen);        _parseFrame(frame, out);     }   }    void _parseFrame(List<int> frame, StreamController<SensorPacket> out) {     if (frame.length < 6) return;      final type = frame[3];     final val = frame.length > 5 ? frame[5] : 0;      double hr = 0, motion = 0, temp = 0, hrv = 0;      switch (type) {       case 0x07: // Heart Rate       case 0x0B:  // Secondary HR? (resting/sleep)         hr = val.toDouble();         break;        case 0x0D: // Motion         if (frame.length > 8) {           motion = frame[8].toDouble();   // primary activity         }         break;        case 0x03: // Temp         temp = val / 10.0;         break;        case 0x15:  // HRV         hrv = val.toDouble();         break;        default:         //if (kDebugMode) logStep("BLE", "UNKOWN TYPE: $type DATA: $frame");         return;     }      final now = DateTime.now();     _updateInterval(hr: hr, temp: temp, hrv: hrv, motion: motion);      if (now.difference(_lastEmit) < _currentInterval) return;     _lastEmit = now;      //if (kDebugMode) logStep("BLE", "TYPE=$type VALUE=${frame[5]} FULL=$frame");     out.add(SensorPacket(       heartRate: hr,        hrv: hrv,        temp: temp,        motion: motion,        sleepQuality: 0,        sleepTime: 0     ));   }    void _updateInterval({required double hr, required double temp, required double hrv, required double motion}) {     final now = DateTime.now();     final abnormal = _isAbnormal(hr: hr, temp: temp, hrv: hrv, motion: motion);     if (abnormal) {       _lastAbnormal = now;     }      final stillElevated = now.difference(_lastAbnormal) < Duration(seconds: 30);      // fast mode vs normal mode     _currentInterval = stillElevated ? const Duration(seconds: 2) : const Duration(seconds: 12);   } }  class HeartRateProtocol implements BleProtocol {   DateTime _lastEmit = DateTime.fromMillisecondsSinceEpoch(0);   DateTime _lastAbnormal = DateTime.fromMillisecondsSinceEpoch(0);    Duration _currentInterval = const Duration(seconds: 10);    @override   void onData(List<int> data, StreamController<SensorPacket> out) {     if (data.length < 2) return;     int hr = 0;      // try standard     final flags = data[0];     final is16Bit = (flags & 0x01) != 0;      if (data.length <= 3) {       hr = is16Bit ? (hr = data[1] | (data[2] << 8)) : data[1];     } else {       hr = data[1]; // fallback     }      final now = DateTime.now();     _updateInterval(hr.toDouble());      if (now.difference(_lastEmit) < _currentInterval) return;     _lastEmit = now;      if (kDebugMode) logStep("HR", "RAW HR: $data");     out.add(SensorPacket(       heartRate: hr.toDouble(),        hrv: 0,        temp: 0,        motion: 0,        sleepQuality: 0,        sleepTime: 0,     ));   }    void _updateInterval(double hr) {     final now = DateTime.now();     final abnormal = (hr >= 120 || hr <= 45);     if (abnormal) {       _lastAbnormal = now;     }      final stillElevated = now.difference(_lastAbnormal) < Duration(seconds: 30);     _currentInterval = stillElevated ? const Duration(seconds: 2) : const Duration(seconds: 12);   } }  bool _isAbnormal({required double hr, required double temp, required double hrv, required double motion}) {   if (hr >= 120 || hr <= 45) return true;   if (temp >= 38.0) return true;   if (hrv > 0 && hrv < 20) return true;   if (motion > 20) return true;   // adjust later based on scale    return false; }
+    wearable_manager.dart
+        import 'dart:async'; import 'package:flutter/foundation.dart'; import 'package:flutter_blue_plus/flutter_blue_plus.dart';  import 'package:vigil_collector/data/sensor_packet.dart'; import 'package:vigil_collector/logger.dart'; import 'package:vigil_collector/wearables/wearable_service.dart';   enum WearableState {   scanning,   connecting,   connected, }  class WearableManager {   final WearableService ble;    final _state = StreamController<WearableState>.broadcast();   final _data = StreamController<SensorPacket>.broadcast();   final _devices = StreamController<List<ScanResult>>.broadcast();    StreamSubscription? _dataSub;   StreamSubscription? _scanSub;    bool _foundAnyDevice = false;   bool _busy = false;   bool _reconnecting = false;   bool _silentScanning = false;   bool _showScanUI = false;    Timer? _scanTimeout;   Timer? _watchDog;    String? _lastDeviceId;    DateTime _lastDataTime = DateTime.now();   DateTime _lastForward = DateTime.fromMillisecondsSinceEpoch(0);   DateTime? _connectedAt;    static const _initGrace = Duration(seconds: 15);    WearableManager(this.ble);    Stream<WearableState> get state => _state.stream;   Stream<SensorPacket> get data => _data.stream;   Stream<List<ScanResult>> get devices => _devices.stream;    bool get shouldShowScanUI => _showScanUI;     // ----------- CONNECT ------------    Future<bool> connect() async {     if (_busy) return false;          _busy = true;     _state.add(WearableState.connecting);      try {       final ok = await ble.reconnectLastDevice();       if (ok) {         _onConnected();         _lastDeviceId = ble.deviceId;         return true;       }        await startScan();       return false;     } finally {       _busy = false;     }   }    Future<void> connectToDevice(BluetoothDevice device) async {     if (_busy) return;      _busy = true;     _state.add(WearableState.connecting);      try {       await ble.connectToDevice(device);       _onConnected();     } finally {       _busy = false;     }   }    void _onConnected() async {     _scanTimeout?.cancel();      await ble.stopScan();      _connectedAt = DateTime.now();     _lastDataTime = DateTime.now();      _state.add(WearableState.connected);      _listenToData();     _startWatchDog();   }      // ----------- SCAN ------------    Future<void> startScan({bool silent = false}) async {     _silentScanning = silent;     _showScanUI = !silent;      if (_state != WearableState.connected) {       await ble.disconnect();     }          _state.add(WearableState.scanning);     await ble.startScan();      _scanSub?.cancel();     _scanSub = ble.scanStream.listen((devices) async {       _devices.add(devices);        // AUTO-CONNECT best match       if (devices.isNotEmpty) {         final best = devices.first;         if (_isReconnectTarget(best)) {           await connectToDevice(best.device);         }       }     });      _scanTimeout?.cancel();     _scanTimeout = Timer(const Duration(seconds: 12), () async {       if (!_foundAnyDevice) {         if (kDebugMode) logStep("SCAN", "No devices found, retrying...");         await startScan();    // auto retry       }     });   }    bool _isReconnectTarget(ScanResult r) {     return r.device.remoteId.str == _lastDeviceId;   }    void enableScanUI() {     _showScanUI = true;     _state.add(WearableState.scanning);   }    // ----------- DATA ------------    void _listenToData() {     _dataSub?.cancel();     _dataSub = ble.stream.listen((p) {       final now = DateTime.now();        if (now.difference(_lastForward) < const Duration(seconds: 10)) return;       _lastForward = now;        _lastDataTime = now;       _data.add(p);     });   }    // ----------- WATCHDOG ------------    void _startWatchDog() {     _watchDog?.cancel();      _watchDog = Timer.periodic(const Duration(seconds: 5), (_) async {       final now = DateTime.now();        // skip watchdog during init connect window       if (_connectedAt != null && now.difference(_connectedAt!) < _initGrace) return;        final diff = now.difference(_lastDataTime);       if (diff > const Duration(seconds: 40)) {         if (kDebugMode) logStep("WATCHDOG", "Lost connection");         await startReconnectLoop();       }     });   }    // ----------- RECONNECT ------------    Future<bool> reconnect() async {     if (_busy) return false;      _busy = true;     _reconnecting = true;     _state.add(WearableState.connecting);      try {       await ble.disconnect();       await Future.delayed(const Duration(seconds: 2));       return await connect();     } catch (e) {       if (kDebugMode) logStep("RECONNECT", "Reconnection FAIL: $e");       return false;     } finally {       _busy = false;       _reconnecting = false;     }   }     Future<void> startReconnectLoop() async {     if (_reconnecting) return;      _busy = true;     _reconnecting = true;     _state.add(WearableState.connecting);      while (_reconnecting) {       if (kDebugMode) logStep("RECONNECT", "Attempting...");       final s = await ble.reconnectLastDevice();        if (s) {         _onConnected();          _reconnecting = false;         _busy = false;         return;       }        // fallback to scan       await ble.startScan();       await Future.delayed(const Duration(seconds: 5));       await ble.stopScan();        await Future.delayed(const Duration(seconds: 2));     }   }    Future<void> dispose() async {     await _dataSub?.cancel();     await _scanSub?.cancel();     _watchDog?.cancel();   } }
     wearable_service.dart
-        import '../data/sensor_packet.dart';
-        abstract class WearableService {
-            String get deviceId;
-            Future<void> connect();
-            Future<void> disconnect();
-            Stream<SensorPacket> get stream;
-        }
-
+        import 'package:flutter_blue_plus/flutter_blue_plus.dart';  import '../data/sensor_packet.dart';  abstract class WearableService {     String get deviceId;          Future<bool> connect();     Future<void> connectToDevice(BluetoothDevice device);     Future<void> disconnect();     Future<void> startScan();     Future<void> stopScan();     Future<bool> reconnectLastDevice();          Stream<SensorPacket> get stream;     Stream<List<ScanResult>> get scanStream; }
+logger.dart
+    import 'package:flutter/foundation.dart';  void logStep(String tag, String msg) {   final time = DateTime.now().toIso8601String();   debugPrint("[$time][$tag] $msg"); }
 main.dart
-    import 'package:flutter/material.dart';
-    import 'package:firebase_core/firebase_core.dart';
-    import 'auth/auth_gate.dart';
-    import 'firebase_options.dart';
-    void main() async {
-    WidgetsFlutterBinding.ensureInitialized();
-    await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-    );
-    runApp(const VigilCollectorApp());
-    }
-    class VigilCollectorApp extends StatelessWidget {
-    const VigilCollectorApp({super.key});
-    @override
-    Widget build(BuildContext context) {
-        return MaterialApp(
-        title: 'VIGIL Collector',
-        theme: ThemeData.dark(),
-        home: const AuthGate(),
-        );
-    }
-    }
+    import 'dart:ui'; import 'dart:async';  import 'package:flutter/material.dart'; import 'package:firebase_core/firebase_core.dart'; import 'package:firebase_crashlytics/firebase_crashlytics.dart';  import 'auth/auth_gate.dart'; import './firebase_options.dart';  enum AppMode {   individual,   orgGateway, }  Future<void> main() async {   WidgetsFlutterBinding.ensureInitialized();   //debugPrint("BOOT_TRACE: Flutter binding initialized");    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);   //debugPrint("BOOT_TRACE: Firebase initialized");    // catch flutter framework errors   FlutterError.onError = FirebaseCrashlytics.instance.recordFlutterFatalError;    // catch async / dart errors   PlatformDispatcher.instance.onError = (error, stack) {     FirebaseCrashlytics.instance.recordError(error, stack, fatal: true);     return true;   };      runApp(const VigilCollectorApp()); }  class VigilCollectorApp extends StatelessWidget {   const VigilCollectorApp({super.key});    @override   Widget build(BuildContext context) {     //debugPrint("BOOT_TRACE: MaterialApp build started");      return MaterialApp(       title: 'VIGIL Collect',       theme: ThemeData.dark(),       debugShowCheckedModeBanner: false,       home: const AuthGate(),     );   } }

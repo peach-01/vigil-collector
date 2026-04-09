@@ -74,7 +74,7 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
             );
 
             pipeline?.dispose();
-            pipeline = DataPipeline(uploader: uploader, uid: widget.uid, wid: wid);
+            pipeline = DataPipeline(uploader: uploader, ownerId: widget.uid, wid: wid);
 
             if (kDebugMode) logStep("CONNECT", "Wearable registered: $wid");
           } catch (e) {
