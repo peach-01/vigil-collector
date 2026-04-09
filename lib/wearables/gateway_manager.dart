@@ -8,10 +8,9 @@ import 'package:vigil_collector/wearables/ble_service.dart';
 import 'package:vigil_collector/wearables/wearable_manager.dart';
 
 class GatewayManager {
-  final Map<String, DeviceInfo> devices = {};
+  final Map<String, GatewayDevice> devices = {};
   final FirestoreUploader uploader;
   final String orgId;
-  final FirebaseFirestore firestore = FirebaseFirestore.instance;
 
   GatewayManager({required this.uploader, required this.orgId});
 
@@ -22,37 +21,43 @@ class GatewayManager {
     await manager.connectToDevice(device);
 
     final wid = ble.deviceId;
-    if (!devices.containsKey(wid)) {
-      devices[wid] = DeviceInfo(device: device);
-    }
+    if (wid == "unknown_device") return;
 
-    final deviceInfo = devices[wid];
-    deviceInfo?.isConnected = true;
+    final pipeline = DataPipeline(uploader: uploader, ownerId: orgId, wid: wid, isOrg: true);
+    final gatewayDevice = GatewayDevice(manager: manager, pipeline: pipeline);
 
-    final pipeline = DataPipeline(uploader: uploader, ownerId: orgId, wid: wid);
+    devices[wid] = gatewayDevice;
+
+    manager.state.listen((state) {
+      gatewayDevice.state = state;
+    });
+    
     manager.data.listen((packet) {
+      gatewayDevice.lastPacket = packet;
+      gatewayDevice.lastUpload = DateTime.now();
       pipeline.add(packet);
     });
 
-    await _fetchAssignedUser(wid);
+    await _fetchAssignedUser(wid, gatewayDevice);
   }
 
-  Future<void> _fetchAssignedUser(String wid) async {
+  Future<void> _fetchAssignedUser(String wid, GatewayDevice device) async {
     try {
-      final wDoc = await firestore.collection('wearables').doc(wid).get();
-      final assignedTo = wDoc.data()?["assignedTo"] as String?;
+      final db = FirebaseFirestore.instance;
 
-      if (assignedTo != null) {
-        final userDoc = await firestore.collection("users").doc(assignedTo).get();
-        final userName = userDoc.data()?["profile"]["name"] ?? "Unknown User";
-        if (userName != null) {
-          devices[wid]?.userName = userName; // store name for future use
-        }
-      }
+      final wearableDoc = await db.collection('wearables').doc(wid).get();
+      final uid = wearableDoc.data()?["assignedTo"] as String?;
+
+      if (uid == null) return;
+      
+      final userDoc = await db.collection("users").doc(uid).get();
+      final userName = userDoc.data()?["profile"]["name"] ?? "Unknown User";
+      
+      device.assignedUserName = userName ?? uid;
     } catch (e) {
       logStep("GATEWAY", "Fetch user FAIL: $e");
     }
   }
 
-  List<String> get connectedIds => devices.keys.toList();
+  List<GatewayDevice> get allDevices => devices.values.toList();
 }
