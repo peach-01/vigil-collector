@@ -4,6 +4,7 @@ import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:vigil_collector/data/uploader.dart';
+import 'package:vigil_collector/logger.dart';
 import 'package:vigil_collector/ui/widgets/scan_list.dart';
 import 'package:vigil_collector/wearables/ble_service.dart';
 import 'package:vigil_collector/wearables/gateway_manager.dart';
@@ -22,13 +23,15 @@ class _OrgGatewayPageState extends State<OrgGatewayPage> {
   late GatewayManager gateway;
   late WearableManager scanManager;
 
+  final int maxConnections = 7;
+  final Set<String> connectingDevices = {};   // prevent duplicates
+
+  List<ScanResult> scanResults = [];
+
   StreamSubscription? scanSub;
   StreamSubscription? updateSub;
 
   WearableState mode = WearableState.scanning;
-  
-
-  List<ScanResult> scanResults = [];
 
   @override
   void initState() {
@@ -53,19 +56,24 @@ class _OrgGatewayPageState extends State<OrgGatewayPage> {
 
       setState(() => scanResults = list);
 
-      if (mode == WearableState.scanning && list.isNotEmpty) {
-        final best = list.first;
+      if (gateway.devices.length < maxConnections) {
+        final vigilDevices = list.where(_isVigilWearable).toList()..sort((a, b) => b.rssi.compareTo(a.rssi));
 
-        if (_isVigilWearable(best)) {
-          setState(() => mode = WearableState.connecting);
+        for (final result in vigilDevices) {
+          final device = result.device;
 
-          await gateway.addDevice(best.device);
+          // stop when limit reached
+          if (gateway.devices.length >= maxConnections) break;
 
-          setState(() => mode = WearableState.connected);
+          // skip if already connected or connecting
+          if (gateway.devices.values.any((d) => d.manager.ble.deviceId == device.remoteId.str)) continue;
+          if (connectingDevices.contains(device.remoteId.str)) continue;
+
+          connectingDevices.add(device.remoteId.str);
+          _connectDevice(device);
         }
       }
     });
-
     await scanManager.startScan(silent: false);
   }
 
@@ -84,6 +92,25 @@ class _OrgGatewayPageState extends State<OrgGatewayPage> {
     setState(() => mode = WearableState.connecting);
     await gateway.addDevice(device);
     setState(() => mode = WearableState.connected);
+  }
+
+  void _connectDevice(BluetoothDevice device) async {
+    try {
+      setState(() => mode = WearableState.connecting);
+
+      await gateway.addDevice(device);
+    } catch (e) {
+      logStep("GATEWAY", "Connection FAIL: $e");
+    } finally {
+      connectingDevices.remove(device.remoteId.str);
+
+      // stay in connect mode if at least 1 device exists
+      if (gateway.devices.isNotEmpty) {
+        setState(() => mode = WearableState.connected);
+      } else {
+        setState(() => mode = WearableState.scanning);
+      }
+    }
   }
 
   Future<void> _logout() async {
