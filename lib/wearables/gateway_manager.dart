@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:vigil_collector/data/data_pipeline.dart';
@@ -11,6 +13,9 @@ class GatewayManager {
   final Map<String, GatewayDevice> devices = {};
   final FirestoreUploader uploader;
   final String orgId;
+  
+  final StreamController<void> _update = StreamController.broadcast();
+  Stream<void> get updates => _update.stream;
 
   GatewayManager({required this.uploader, required this.orgId});
 
@@ -19,9 +24,11 @@ class GatewayManager {
     final manager = WearableManager(ble);
 
     await manager.connectToDevice(device);
+    await Future.delayed(const Duration(milliseconds: 500));
 
     final wid = ble.deviceId;
     if (wid == "unknown_device") return;
+    if (devices.containsKey(wid)) return;
 
     final pipeline = DataPipeline(uploader: uploader, ownerId: orgId, wid: wid, isOrg: true);
     final gatewayDevice = GatewayDevice(manager: manager, pipeline: pipeline);
@@ -36,6 +43,8 @@ class GatewayManager {
       gatewayDevice.lastPacket = packet;
       gatewayDevice.lastUpload = DateTime.now();
       pipeline.add(packet);
+
+      _update.add(null);  // UI refresh
     });
 
     await _fetchAssignedUser(wid, gatewayDevice);

@@ -22,6 +22,10 @@ class _OrgGatewayPageState extends State<OrgGatewayPage> {
   late WearableManager scanManager;
 
   StreamSubscription? scanSub;
+  StreamSubscription? updateSub;
+  
+  WearableState mode = WearableState.scanning;
+  
 
   List<ScanResult> scanResults = [];
 
@@ -35,54 +39,106 @@ class _OrgGatewayPageState extends State<OrgGatewayPage> {
     final ble = BleWearableService();
     scanManager = WearableManager(ble);
 
-    _initScan();
+    updateSub = gateway.updates.listen((_) {
+      if (mounted) setState(() {});
+    });
+
+    _init();
   }
 
-  Future<void> _initScan() async {
-    scanSub = scanManager.devices.listen((list) {
+  Future<void> _init() async {
+    scanSub = scanManager.devices.listen((list) async {
+      if (!mounted) return;
+
       setState(() => scanResults = list);
+
+      if (mode == WearableState.scanning && list.isNotEmpty) {
+        final best = list.first;
+
+        if (_isVigilWearable(best)) {
+          setState(() => mode = WearableState.connecting);
+
+          await gateway.addDevice(best.device);
+
+          setState(() => mode = WearableState.connected);
+        }
+      }
     });
 
     await scanManager.startScan(silent: false);
   }
 
+  bool _isVigilWearable(ScanResult r) {
+    final name = r.device.name.toUpperCase();
+    final adv = r.advertisementData.advName.toUpperCase();
+
+    return (
+      name.contains("VIGIL") || adv.contains("VIGIL") ||
+      name.contains("H303") || adv.contains("H303") ||
+      name.contains("HW706") || adv.contains("HW706")
+    );
+  }
+
   Future<void> _connect(BluetoothDevice device) async {
+    setState(() => mode = WearableState.connecting);
     await gateway.addDevice(device);
-    setState(() {});
+    setState(() => mode = WearableState.connected);
   }
 
   @override
   Widget build(BuildContext context) {
+    Widget body;
+
+    switch (mode) {
+      case WearableState.scanning:
+        body = ScanList(
+          scanResults: scanResults,
+          onTap: _connect,
+          isVigil: _isVigilWearable,
+        );
+        break;
+
+      case WearableState.connecting:
+        body = const Center(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              CircularProgressIndicator(),
+              SizedBox(height: 16),
+              Text("Connecting..."),
+            ],
+          ),
+        );
+        break;
+
+      case WearableState.connected:
+        body = _connectedView();
+        break;
+    }
+
     return Scaffold(
-      appBar: AppBar(
-        title: Text("ORG GATEWAY"),
-      ),
-      body: Column(
-        children: [
-          Expanded(
-            child: ScanList(
-              scanResults: scanResults, 
-              onTap: _connect, 
-              isVigil: (r) => true,
-            ),
-          ),
-          const Divider(),
+      appBar: AppBar(title: const Text("ORG GATEWAY")),
+      body: body,
+    );
+  }
 
-          Expanded(
-            child: ListView(
-              children: gateway.allDevices.map((d) {
-                final hr = d.lastPacket?.heartRate.toStringAsFixed(0) ?? "--";
+  Widget _connectedView() {
+    final devices = gateway.allDevices;
 
-                return ListTile(
-                  title: Text(d.manager.ble.deviceId),
-                  subtitle: Text(d.assignedUserName ?? "Unassigned"),
-                  trailing: Text("HR: $hr"),
-                );
-              }).toList(),
-            ),
-          ),
-        ],
-      ),
+    if (devices.isEmpty) {
+      return const Center(child: Text("No devices connected"));
+    }
+
+    return ListView(
+      children: devices.map((d) {
+        final hr = d.lastPacket?.heartRate.toStringAsFixed(0) ?? "--";
+
+        return ListTile(
+          title: Text(d.manager.ble.deviceId),
+          subtitle: Text(d.assignedUserName ?? "Unassigned"),
+          trailing: Text("HR: $hr"),
+        );
+      }).toList(),
     );
   }
 }
