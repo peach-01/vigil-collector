@@ -167,7 +167,7 @@ class FirestoreUploader {
         final temp = packet.temp;
 
         // Immediate Danger Thresholds (Conservative)
-        if (hr >= 140) {
+        if (hr >= 200) {
             _emitNotification(uid:uid, wid:wid, atype:"tachycardia", severity:"critical", msg:"Dangerously high heart rate", immediate:true);
         }
         if (hrv > 0 && hrv < 15) {

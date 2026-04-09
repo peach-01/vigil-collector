@@ -35,7 +35,7 @@ class AuthGate extends StatelessWidget {
             final role = data["role"] ?? "user";
             final orgId = data["orgId"];
 
-            if (role == "org_gateway" && orgId != null) {
+            if (role == "org" && orgId != null) {
               return OrgGatewayPage(orgId: orgId);
             }
 
