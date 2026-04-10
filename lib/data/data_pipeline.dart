@@ -31,6 +31,8 @@ class DataPipeline {
   }
 
   void add(SensorPacket packet) {
+    if (!isActive) return;
+
     if (_queue.length >= maxQueueSize) {
       _queue.removeFirst();   // prevents infinite memory growth
     }
@@ -43,7 +45,9 @@ class DataPipeline {
   }
 
   Future<void> flush() async {
+    if (!isActive) return;
     if (_uploading || _queue.isEmpty) return;
+
     _uploading = true;
 
     try {
@@ -51,17 +55,19 @@ class DataPipeline {
         _batch.add(_queue.removeFirst());
       }
 
-      if (_batch.isEmpty) return;
-      if (!isActive) return;
+      if (_batch.isEmpty || !isActive) return;
 
       await uploader.uploadBatch(ownerId: ownerId, wid: wid, packets: List.from(_batch));
       _batch.clear();
     } catch (e) {
+      if (!isActive) return;
+
       if (kDebugMode) logStep("PIPELINE", "Upload FAILED, re-queueing: $e");
       await cache.addBatch(_batch);
 
       // delay before retrying
       await Future.delayed(const Duration(seconds: 2));
+      if (!isActive) return;
 
       // put back on front (offline-safe)
       _queue.addAll(_batch);
@@ -79,7 +85,10 @@ class DataPipeline {
   }
 
   void dispose() {
-    _flushTimer?.cancel();
     isActive = false;
+
+    _flushTimer?.cancel();
+    _queue.clear();
+    _batch.clear();
   }
 }

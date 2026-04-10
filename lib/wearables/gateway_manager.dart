@@ -15,11 +15,18 @@ class GatewayManager {
   final String orgId;
 
   final StreamController<void> _update = StreamController.broadcast();
+  final Map<String, List<StreamSubscription>> _subs = {};
+  final Map<String, Timer> _rssiTimers = {};
+
+  bool _isShuttingDown = false;
+
   Stream<void> get updates => _update.stream;
 
   GatewayManager({required this.uploader, required this.orgId});
 
   Future<void> addDevice(BluetoothDevice device) async {
+    if (_isShuttingDown) return;
+
     final ble = BleWearableService();
     final manager = WearableManager(ble);
 
@@ -36,7 +43,11 @@ class GatewayManager {
     devices[wid] = gatewayDevice;
 
     // ---------------- STATE ----------------
-    manager.state.listen((state) {
+    final subs = <StreamSubscription>[];
+
+    subs.add(manager.state.listen((state) {
+      if (_isShuttingDown) return;
+
       gatewayDevice.state = state;
 
       if (state != WearableState.connected) {
@@ -45,20 +56,24 @@ class GatewayManager {
         gatewayDevice.statusNote = null;
       }
       _update.add(null);
-    });
+    }));
     
     // ---------------- DATA ----------------
-    manager.data.listen((packet) {
+    subs.add(manager.data.listen((packet) {
+      if (_isShuttingDown) return;
+
       gatewayDevice.lastPacket = packet;
       gatewayDevice.lastUpload = DateTime.now();
       gatewayDevice.lastSeen = DateTime.now();
 
       pipeline.add(packet);
       _update.add(null);  // UI refresh
-    });
+    }));
+
+    _subs[wid] = subs;
 
     // ---------------- RSSI (periodic) ----------------
-    _startTrackingRssi(device, gatewayDevice);
+    _startTrackingRssi(device, gatewayDevice, wid);
 
     await _fetchAssignedUser(wid, gatewayDevice);
   }
@@ -97,10 +112,10 @@ class GatewayManager {
     }
   }
 
-  void _startTrackingRssi(BluetoothDevice device, GatewayDevice d) {
-    Timer.periodic(const Duration(seconds: 5), (timer) async {
-      if (!devices.containsValue(d)) {
-        timer.cancel();
+  void _startTrackingRssi(BluetoothDevice device, GatewayDevice d, String wid) {
+    final timer = Timer.periodic(const Duration(seconds: 5), (t) async {
+      if (_isShuttingDown || !devices.containsValue(d)) {
+        t.cancel();
         return;
       }
 
@@ -110,19 +125,33 @@ class GatewayManager {
         d.lastSeen = DateTime.now();
         _update.add(null);
       } catch (_) {
-        timer.cancel();
+        t.cancel();
       }
     });
+
+    _rssiTimers[wid] = timer;
   }
 
   Future<void> dispose() async {
-    for (final d in devices.values) {
+    _isShuttingDown = true;
+
+    for (final entry in devices.entries) {
+      final wid = entry.key;
+      final d = entry.value;
+
       try {
+        for (final sub in _subs[wid] ?? []) {
+          await sub.cancel(); // cancel streams
+        }
+
+        _rssiTimers[wid]?.cancel();   // cancel timers
+        d.pipeline.dispose();   // stop pipeline before disconnect
         await d.manager.ble.disconnect();
-        d.pipeline.dispose();
       } catch (_) {}
     }
 
+    _subs.clear();
+    _rssiTimers.clear();
     devices.clear();
 
     await _update.close();

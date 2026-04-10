@@ -28,7 +28,9 @@ class _OrgGatewayPageState extends State<OrgGatewayPage> {
   final Set<String> connectingDevices = {};   // prevent duplicates
 
   List<ScanResult> scanResults = [];
+
   bool showScanPanel = false;   // scan list toggle
+  bool _isLoggingOut = false;
 
   StreamSubscription? scanSub;
   StreamSubscription? updateSub;
@@ -129,13 +131,22 @@ class _OrgGatewayPageState extends State<OrgGatewayPage> {
   }
 
   Future<void> _logout() async {
-    await scanSub?.cancel();
-    await updateSub?.cancel();
-    
-    await gateway.dispose();
-    await scanManager.ble.disconnect();
-    await FirebaseAuth.instance.signOut();
+    if (_isLoggingOut) return;
+    _isLoggingOut = true;
 
+    try {
+      await scanSub?.cancel();
+      await updateSub?.cancel();
+
+      await scanManager.ble.disconnect();
+      await gateway.dispose();
+      await scanManager.ble.disconnect();
+
+      await FirebaseAuth.instance.signOut();
+    } catch (e) {
+      logStep("AUTH", "Logout error: $e");
+    }
+    
     if (!mounted) return;
     Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
   }
