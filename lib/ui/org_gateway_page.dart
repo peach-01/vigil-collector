@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
+import 'package:vigil_collector/data/gateway_device.dart';
 import 'package:vigil_collector/data/uploader.dart';
 import 'package:vigil_collector/logger.dart';
 import 'package:vigil_collector/ui/widgets/scan_list.dart';
@@ -27,11 +28,17 @@ class _OrgGatewayPageState extends State<OrgGatewayPage> {
   final Set<String> connectingDevices = {};   // prevent duplicates
 
   List<ScanResult> scanResults = [];
+  bool showScanPanel = false;   // scan list toggle
 
   StreamSubscription? scanSub;
   StreamSubscription? updateSub;
 
   WearableState mode = WearableState.scanning;
+
+  String formatWid(String wid) {
+    if (wid.length <= 8) return wid;
+    return "${wid.substring(0,4)}...${wid.substring(wid.length-4)}";
+  }
 
   @override
   void initState() {
@@ -62,6 +69,11 @@ class _OrgGatewayPageState extends State<OrgGatewayPage> {
         for (final result in vigilDevices) {
           final device = result.device;
 
+          final existing = gateway.devices.values.where((d) => d.manager.ble.deviceId == device.remoteId.str);
+          for (final d in existing) {
+            d.rssi = result.rssi;
+          }
+
           // stop when limit reached
           if (gateway.devices.length >= maxConnections) break;
 
@@ -87,6 +99,9 @@ class _OrgGatewayPageState extends State<OrgGatewayPage> {
       name.contains("HW706") || adv.contains("HW706")
     );
   }
+
+
+  // ------------------ CONNECT ------------------
 
   Future<void> _connect(BluetoothDevice device) async {
     setState(() => mode = WearableState.connecting);
@@ -120,6 +135,41 @@ class _OrgGatewayPageState extends State<OrgGatewayPage> {
 
     if (!mounted) return;
     Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+  }
+
+  Widget _deviceDetails(GatewayDevice d) {
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          _infoRow("Status", d.state.toString().split('.').last),
+          _infoRow("Last Upload", d.lastUploadAgo),
+          _infoRow("Connect Time", d.connectionDuration),
+          _infoRow("Last HR", d.lastPacket?.heartRate.toStringAsFixed(0) ?? "--"),
+
+          _infoRow("Battery", d.batteryLevel != null ? "${d.batteryLevel}%" : "Unknown"),
+          _infoRow("Signal", d.signalQuality),
+          _infoRow("Last Seen", d.lastSeen != null ? "${DateTime.now().difference(d.lastSeen!).inSeconds}s ago" : "Unknown"),
+          
+          if (d.statusNote != null)
+            _infoRow("Note", d.statusNote!),
+        ],
+      ),
+    );
+  }
+
+  Widget _infoRow(String label, String val) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          Text(label, style: const TextStyle(color: Colors.grey)),
+          Text(val, style: const TextStyle(fontWeight: FontWeight.bold)),
+        ],
+      ),
+    );
   }
 
   @override
@@ -159,13 +209,19 @@ class _OrgGatewayPageState extends State<OrgGatewayPage> {
           children: [
             Image.asset('assets/VIGIL_logo_white.png', width: 60, height: 60),
             SizedBox(width: 12),
-            Text("ORG GATEWAY", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, letterSpacing: 3)),
+            Text("ORG GATEWAY (${gateway.devices.length}/$maxConnections)", style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, letterSpacing: 3)),
           ],
         ),
         actions: [
           IconButton(
             icon: Icon(Icons.logout),
             onPressed: _logout,
+          ),
+          IconButton(
+            icon: Icon(Icons.bluetooth_searching),
+            onPressed: () {
+              setState(() => showScanPanel = !showScanPanel);
+            },
           ),
         ],
       ),
@@ -174,22 +230,56 @@ class _OrgGatewayPageState extends State<OrgGatewayPage> {
   }
 
   Widget _connectedView() {
-    final devices = gateway.allDevices;
+    final devices = gateway.devices.entries.toList();
 
-    if (devices.isEmpty) {
-      return const Center(child: Text("No devices connected"));
-    }
+    return Column(
+      children: [
+        if (showScanPanel)
+          SizedBox(
+            height: 250,
+            child: ScanList(
+              scanResults: scanResults, 
+              onTap: _connect, 
+              isVigil: _isVigilWearable,
+            ),
+          ),
+          Expanded(
+            child: devices.isEmpty 
+                ? const Center(child: Text("No devices connected"))
+                : ListView(
+                  children: devices.map((entry) {
+                    final wid = entry.key;
+                    final d = entry.value;
 
-    return ListView(
-      children: devices.map((d) {
-        final hr = d.lastPacket?.heartRate.toStringAsFixed(0) ?? "--";
+                    final hr = d.lastPacket?.heartRate.toStringAsFixed(0) ?? "--";
 
-        return ListTile(
-          title: Text(d.manager.ble.deviceId),
-          subtitle: Text(d.assignedUserName ?? "Unassigned"),
-          trailing: Text("HR: $hr"),
-        );
-      }).toList(),
+                    return Card(
+                      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      elevation: 3,
+                      child: ExpansionTile(
+                        title: Text(formatWid(wid), style: const TextStyle(fontWeight: FontWeight.bold)),
+                        subtitle: Text(d.assignedUserName ?? "Unassigned"),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text("HR: $hr"),
+                            IconButton(
+                              icon: const Icon(Icons.close, color: Colors.red),
+                              onPressed: () {
+                                gateway.disconnectDevice(wid);
+                              },
+                            ),
+                          ],
+                        ),
+                        children: [
+                          _deviceDetails(d),
+                        ],
+                      ),
+                    );
+                  }).toList(),
+                ),
+          ),
+      ],
     );
   }
 }
