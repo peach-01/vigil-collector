@@ -23,6 +23,8 @@ class DataPipeline {
   static const int maxQueueSize = 500;
   static const Duration flushInterval = Duration(seconds: 30);
 
+  bool isActive = true;
+
   DataPipeline({required this.uploader, required this.ownerId, required this.wid, this.isOrg = false}) {
     _drainCacheOnStart();
     _startAutoFlush();
@@ -50,6 +52,7 @@ class DataPipeline {
       }
 
       if (_batch.isEmpty) return;
+      if (!isActive) return;
 
       await uploader.uploadBatch(ownerId: ownerId, wid: wid, packets: List.from(_batch));
       _batch.clear();
@@ -77,5 +80,6 @@ class DataPipeline {
 
   void dispose() {
     _flushTimer?.cancel();
+    isActive = false;
   }
 }

@@ -129,7 +129,10 @@ class _OrgGatewayPageState extends State<OrgGatewayPage> {
   }
 
   Future<void> _logout() async {
-    dispose();
+    await scanSub?.cancel();
+    await updateSub?.cancel();
+    
+    await gateway.dispose();
     await scanManager.ble.disconnect();
     await FirebaseAuth.instance.signOut();
 

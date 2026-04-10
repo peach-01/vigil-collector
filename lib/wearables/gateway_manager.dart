@@ -115,5 +115,18 @@ class GatewayManager {
     });
   }
 
+  Future<void> dispose() async {
+    for (final d in devices.values) {
+      try {
+        await d.manager.ble.disconnect();
+        d.pipeline.dispose();
+      } catch (_) {}
+    }
+
+    devices.clear();
+
+    await _update.close();
+  }
+
   List<GatewayDevice> get allDevices => devices.values.toList();
 }
