@@ -83,7 +83,7 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
           }
         }
 
-        if (state == WearableState.scanning) {
+        if (state == WearableState.scanning && mode != WearableState.connected) {
           _registered = false;
         }
       });
@@ -132,7 +132,7 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
 
     Future<void> smartStartup() async {
       // Stage 1: silent reconnect attempt (fast)
-      final s = await manager.reconnect();
+      final s = await manager.connect();
       if (s) return;
 
       // Stage 2: background scan (no UI switch yet)

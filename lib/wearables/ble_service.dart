@@ -84,14 +84,14 @@ class BleWearableService implements WearableService {
 
         // auto-reconnect
         if (lastId != null) {
-          await Future.delayed(const Duration(seconds: 4));
+          for (int i=0; i<5; i++) {
+            await Future.delayed(Duration(seconds: 2 + i * 2));
 
-          try {
-            _device = BluetoothDevice.fromId(lastId);
-            if (kDebugMode) logStep("BLE", "Auto-reconnecting");
-            await connect();
-          } catch (e) {
-            if (kDebugMode) logStep("BLE", "Auto-reconnect FAIL: $e");
+            try {
+              _device = BluetoothDevice.fromId(lastId);
+              await connect();
+              return;
+            } catch (_) {}
           }
         }
       }
