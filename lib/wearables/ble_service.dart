@@ -212,11 +212,6 @@ class BleWearableService implements WearableService {
           _notifyChars.add(c);
         }
 
-        // notify
-        /*if (props.notify || props.indicate) {
-          _notifyChars.add(c);
-        }*/
-
         // write
         if (_writeChar == null && (props.writeWithoutResponse || props.write)) {
           _writeChar = c;
@@ -243,8 +238,6 @@ class BleWearableService implements WearableService {
         if (kDebugMode) logStep("BLE", "NOTIFY FAIL: ${c.uuid} - $e");
       }
     }
-
-    //_notifySub = StreamGroup.merge(streams).listen(_onNotify);
     _notifySub = _notifyChars.first.value.listen(_onNotify);
   }
 
@@ -266,12 +259,6 @@ class BleWearableService implements WearableService {
     // Step 3: enable sensor system
     await _write(CommandBuilder.packet(0xA0, [0xFF]));
     await Future.delayed(const Duration(milliseconds: 500));
-
-    // Step 4: maintain stream
-    /*_keepAliveTimer?.cancel();
-    _keepAliveTimer = Timer.periodic(const Duration(seconds: 5), (_) async {
-      await _write(CommandBuilder.packet(0xA0, [0x03]));
-    });*/
   }
 
   Future<void> _write(Uint8List packet) async {

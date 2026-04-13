@@ -4,6 +4,7 @@ import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import 'package:vigil_collector/data/sensor_packet.dart';
 import 'package:vigil_collector/logger.dart';
+import 'package:vigil_collector/utils/consts.dart';
 import 'package:vigil_collector/wearables/wearable_service.dart';
 
 
@@ -33,6 +34,7 @@ class WearableManager {
   Timer? _watchDog;
 
   String? _lastDeviceId;
+  Set<String>? allowedIds;
 
   DateTime _lastDataTime = DateTime.now();
   DateTime _lastForward = DateTime.fromMillisecondsSinceEpoch(0);
@@ -115,14 +117,20 @@ class WearableManager {
 
     _scanSub?.cancel();
     _scanSub = ble.scanStream.listen((devices) async {
-      _devices.add(devices);
+      final filtered = allowedIds == null ? devices : devices.where((d) => allowedIds!.contains(normalizeId(d.device.remoteId.str))).toList();
+      _devices.add(filtered);
 
       // AUTO-CONNECT best match
-      if (devices.isNotEmpty) {
-        final best = devices.first;
+      if (filtered.isNotEmpty) {
+        _foundAnyDevice = true;
+        final best = filtered.first;
         if (_isReconnectTarget(best)) {
           await connectToDevice(best.device);
         }
+      }
+
+      if (filtered.isEmpty) {
+        enableScanUI();
       }
     });
 
@@ -133,6 +141,12 @@ class WearableManager {
         await startScan();    // auto retry
       }
     });
+  }
+
+  Future<void> startScanBurst() async {
+    await startScan();
+    await Future.delayed(Duration(seconds: 5));
+    await ble.stopScan();
   }
 
   bool _isReconnectTarget(ScanResult r) {

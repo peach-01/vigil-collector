@@ -57,7 +57,7 @@ class DataPipeline {
 
       if (_batch.isEmpty || !isActive) return;
 
-      await uploader.uploadBatch(ownerId: ownerId, wid: wid, packets: List.from(_batch));
+      await uploader.uploadBatch(wid: wid, packets: List.from(_batch));
       _batch.clear();
     } catch (e) {
       if (!isActive) return;

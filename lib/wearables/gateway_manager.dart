@@ -6,6 +6,7 @@ import 'package:vigil_collector/data/data_pipeline.dart';
 import 'package:vigil_collector/data/gateway_device.dart';
 import 'package:vigil_collector/data/uploader.dart';
 import 'package:vigil_collector/logger.dart';
+import 'package:vigil_collector/utils/consts.dart';
 import 'package:vigil_collector/wearables/ble_service.dart';
 import 'package:vigil_collector/wearables/wearable_manager.dart';
 
@@ -18,11 +19,32 @@ class GatewayManager {
   final Map<String, List<StreamSubscription>> _subs = {};
   final Map<String, Timer> _rssiTimers = {};
 
+  Set<String> allowedWearables = {};
+  StreamSubscription? orgWearableSub;
+
   bool _isShuttingDown = false;
 
   Stream<void> get updates => _update.stream;
 
   GatewayManager({required this.uploader, required this.orgId});
+
+  Future<void> init() async {
+    final db = FirebaseFirestore.instance;
+    orgWearableSub = db.collection('wearables').where('orgId', isEqualTo: orgId).snapshots().listen((snap) {
+      allowedWearables = snap.docs.map((d) => d.id).toSet();
+    });
+  }
+
+  void handleScanResults(List<ScanResult> results) {
+    for (final r in results) {
+      final wid = r.device.remoteId.str;
+
+      if (!allowedWearables.contains(normalizeId(wid))) continue;
+      if (devices.containsKey(wid)) continue;
+
+      addDevice(r.device);
+    }
+  }
 
   Future<void> addDevice(BluetoothDevice device) async {
     if (_isShuttingDown) return;

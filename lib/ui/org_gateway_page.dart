@@ -60,6 +60,8 @@ class _OrgGatewayPageState extends State<OrgGatewayPage> {
   }
 
   Future<void> _init() async {
+    await gateway.init();
+
     scanSub = scanManager.devices.listen((list) async {
       if (!mounted) return;
 

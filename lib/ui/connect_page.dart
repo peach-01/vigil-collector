@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -9,6 +10,7 @@ import 'package:vigil_collector/data/data_pipeline.dart';
 import 'package:vigil_collector/logger.dart';
 import 'package:vigil_collector/ui/widgets/connected_view.dart';
 import 'package:vigil_collector/ui/widgets/scan_list.dart';
+import 'package:vigil_collector/utils/consts.dart';
 import 'package:vigil_collector/wearables/wearable_manager.dart';
 import '../wearables/ble_service.dart';
 import '../wearables/mock_wearable_service.dart';
@@ -26,9 +28,13 @@ class ConnectWearablePage extends StatefulWidget {
 class _ConnectWearablePageState extends State<ConnectWearablePage> {
     late final WearableManager manager;
 
+    List<ScanResult> scanResults = [];
+    Set<String> allowedWearables = {};
+
     StreamSubscription? stateSub;
     StreamSubscription? dataSub;
     StreamSubscription? deviceSub;
+    StreamSubscription? wearableSub;
     
     DateTime? lastUpload;
     SensorPacket? lastPacket;
@@ -36,7 +42,6 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
     DataPipeline? pipeline;
 
     WearableState mode = WearableState.scanning;
-    List<ScanResult> scanResults = [];
 
     bool _registered = false;
     late final FirestoreUploader uploader;
@@ -54,6 +59,7 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
 
     Future<void> _init() async {
       uploader = FirestoreUploader();
+      await _loadAssignedWearables();
 
       stateSub = manager.state.listen((state) async {
         if (!mounted) return;
@@ -67,12 +73,6 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
           if (wid == "unknown_device") return;
           
           try {
-            await uploader.registerWearable(
-              uid: widget.uid, 
-              wearableId: wid, 
-              type: "heart_rate_monitor",
-            );
-
             pipeline?.dispose();
             pipeline = DataPipeline(uploader: uploader, ownerId: widget.uid, wid: wid);
 
@@ -91,16 +91,6 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
       deviceSub = manager.devices.listen((list) async {
         if (!mounted) return;
         setState(() => scanResults = list);
-
-        // AUTO-CONNECT LOGIC
-        if (mode == WearableState.scanning && list.isNotEmpty) {
-          final best = list.first;
-
-          // connection to VIGIL devices only
-          if (_isVigilWearable(best)) {
-            await manager.connectToDevice(best.device);
-          }
-        }
       });
 
       dataSub = manager.data.listen((packet) async {
@@ -115,6 +105,14 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
       });
 
       smartStartup();
+    }
+
+    Future<void> _loadAssignedWearables() async {
+      final db = FirebaseFirestore.instance;
+
+      wearableSub = db.collection('wearables').where('assignedTo', isEqualTo: widget.uid).snapshots().listen((snap) {
+        allowedWearables = snap.docs.map((d) => d.id).toSet();
+      });
     }
 
     bool _isValidPacket(SensorPacket p) {

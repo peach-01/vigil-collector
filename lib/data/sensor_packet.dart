@@ -15,8 +15,8 @@ class SensorPacket {
         required this.sleepTime,
     });
 
-    Map<String, dynamic> toJson(String uid) => {
-        "user_id": uid,
+    Map<String, dynamic> toJson(String wid) => {
+        "wid": wid,
         "heart_rate": heartRate,
         "hrv": hrv,
         "temp": temp,
