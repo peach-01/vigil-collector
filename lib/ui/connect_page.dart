@@ -176,6 +176,9 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
                   isVigil: _isVigilWearable, 
                   onTap: (device) async {
                     await manager.connectToDevice(device);
+
+                    final wid = manager.ble.deviceId;
+                    await uploader.ensureWearableRegistered(wid: wid, type: "vigil_ble");
                   },
               )
               : _scanningView(); 

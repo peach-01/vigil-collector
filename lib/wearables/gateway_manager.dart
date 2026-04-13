@@ -94,6 +94,9 @@ class GatewayManager {
 
     _subs[wid] = subs;
 
+    // ----------- WEARABLE ASSIGNMENT -----------
+    await uploader.ensureWearableRegistered(wid: wid, type: "vigil_ble", orgId: orgId);
+
     // ---------------- RSSI (periodic) ----------------
     _startTrackingRssi(device, gatewayDevice, wid);
 
@@ -135,7 +138,7 @@ class GatewayManager {
   }
 
   void _startTrackingRssi(BluetoothDevice device, GatewayDevice d, String wid) {
-    final timer = Timer.periodic(const Duration(seconds: 5), (t) async {
+    final timer = Timer.periodic(const Duration(seconds: 15), (t) async {
       if (_isShuttingDown || !devices.containsValue(d)) {
         t.cancel();
         return;

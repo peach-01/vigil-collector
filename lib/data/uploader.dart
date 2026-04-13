@@ -29,9 +29,14 @@ class VigilUploader {
 
 class FirestoreUploader {
     final FirebaseFirestore _db;
+    final Set<String> _registeredCache = {};
+
     String? _cachedName;
     String? _cachedOrgId;
     String? _lastCachedUid;
+
+    DateTime? _lastStatusUpdate;
+    
 
     FirestoreUploader({FirebaseFirestore? firestore}) : _db = firestore ?? FirebaseFirestore.instance;
 
@@ -68,27 +73,31 @@ class FirestoreUploader {
       final batch = _db.batch();
       final telemetryCol = _db.collection('wearables').doc(wid).collection('telemetry');
 
-      for (final p in packets) {
-        final ref = telemetryCol.doc();
+      if (_lastStatusUpdate == null || DateTime.now().difference(_lastStatusUpdate!) > Duration(seconds: 15)) {
+        for (final p in packets) {
+          final ref = telemetryCol.doc();
 
-        batch.set(ref, {
-          'ts': FieldValue.serverTimestamp(),
-          'heartRate': p.heartRate,
-          'hrv': p.hrv,
-          'temp': p.temp,
-          'motion': p.motion,
-          'sleepQuality': p.sleepQuality,
-          'sleepTime': p.sleepTime,
-        });
-      }
-
-      batch.set(_db.collection('wearables').doc(wid), {
-        'status': {
-          'online': true,
-          'lastSeen': FieldValue.serverTimestamp(),
+          batch.set(ref, {
+            'ts': FieldValue.serverTimestamp(),
+            'heartRate': p.heartRate,
+            'hrv': p.hrv,
+            'temp': p.temp,
+            'motion': p.motion,
+            'sleepQuality': p.sleepQuality,
+            'sleepTime': p.sleepTime,
+          });
         }
-      }, SetOptions(merge: true));
-      await batch.commit();
+
+        batch.set(_db.collection('wearables').doc(wid), {
+          'status': {
+            'online': true,
+            'lastSeen': FieldValue.serverTimestamp(),
+          }
+        }, SetOptions(merge: true));
+        await batch.commit();
+
+        _lastStatusUpdate = DateTime.now();
+      }
 
       // run danger detection on last sample only
       _evalRealtimeTelemetry(wid, packets.last);
@@ -123,7 +132,7 @@ class FirestoreUploader {
           _emitNotification(uid:uid, wid:wid, atype:"heat_warning", severity:"warning", msg:"Elevated core temperature", immediate:true);
       }
     }
-
+    
     Future<void> _emitNotification({required String uid, required String wid, required String atype, required String severity, required String msg, bool immediate=false}) async {
         String? orgId = _cachedOrgId;
         String name = _cachedName ?? uid;
@@ -187,4 +196,65 @@ class FirestoreUploader {
           if (kDebugMode) logStep("UPLOAD", "Failed to emit notifications: $e");
         }
     }
+
+  // ---------- WEARABLE REGISTRY ----------
+  Future<void> ensureWearableRegistered({required String wid, required String type, String? orgId}) async {         
+    if (_registeredCache.contains(wid)) return;
+    
+    final ref = _db.collection('wearables').doc(wid);         
+    final snap = await ref.get();
+
+    if (snap.exists) {
+      // already registered -> only ensure minimal field exists
+      await ref.set({
+        'wearableId': wid,
+        'type': type,
+        if (orgId != null) 'orgId': orgId,
+        'status': {
+          'lastSeen': FieldValue.serverTimestamp(),
+        }
+      }, SetOptions(merge: true));
+      return;
+    }
+
+    // first-time registry
+    await ref.set({                 
+      'wearableId': wid,                 
+      'type': type,
+      'orgId': orgId,
+      'createdAt': FieldValue.serverTimestamp(),                 
+      'status': {                     
+        'active': true,                     
+        'online': true,                     
+        'batteryPct': 0,                     
+        'lastSeen': FieldValue.serverTimestamp(),                 
+      }             
+    });
+
+    _registeredCache.add(wid);
+  }
+
+
+  // ------------ WEARABLE ASSIGNMENT -----------
+  Future<void> assignWearableToUser({required String wid, required String uid}) async {
+    final batch = _db.batch();
+    final wearableRef = _db.collection('wearables').doc(wid);
+    final userRef = _db.collection('users').doc(uid);
+    final userSnap = await userRef.get();
+    final orgId = userSnap.data()?['orgId'];
+
+    batch.set(wearableRef, {
+      'assignedTo': uid,
+      'orgId': orgId,
+      'assignedAt': FieldValue.serverTimestamp(),
+    }, SetOptions(merge: true));
+
+    // user ref
+    batch.set(userRef.collection('wearables').doc(wid), {
+      'wearableId': uid,
+      'assignedAt': FieldValue.serverTimestamp(),
+      'active': true,
+    }, SetOptions(merge: true));
+    await batch.commit();
+  }
 }

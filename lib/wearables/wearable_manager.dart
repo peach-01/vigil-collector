@@ -102,7 +102,7 @@ class WearableManager {
     _startWatchDog();
   }
 
-    // ----------- SCAN ------------
+  // ----------- SCAN ------------
 
   Future<void> startScan({bool silent = false}) async {
     _silentScanning = silent;
@@ -122,9 +122,9 @@ class WearableManager {
 
       // AUTO-CONNECT best match
       if (filtered.isNotEmpty) {
-        _foundAnyDevice = true;
         final best = filtered.first;
         if (_isReconnectTarget(best)) {
+          _foundAnyDevice = true;
           await connectToDevice(best.device);
         }
       }
