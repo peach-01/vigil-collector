@@ -104,7 +104,8 @@ class _OrgGatewayPageState extends State<OrgGatewayPage> {
     return (
       name.contains("VIGIL") || adv.contains("VIGIL") ||
       name.contains("H303") || adv.contains("H303") ||
-      name.contains("HW706") || adv.contains("HW706")
+      name.contains("HW706") || adv.contains("HW706") ||
+      name.contains("H6M") || adv.contains("H6M")
     );
   }
 
