@@ -52,12 +52,12 @@ class GatewayManager {
     final ble = BleWearableService();
     final manager = WearableManager(ble);
 
-    await manager.connectToDevice(device);
-    await Future.delayed(const Duration(milliseconds: 500));
-
     final wid = ble.deviceId;
     if (wid == "unknown_device") return;
     if (devices.containsKey(wid)) return;
+
+    final connected = await manager.connectToDevice(device);
+    await Future.delayed(const Duration(milliseconds: 500));
 
     final pipeline = DataPipeline(uploader: uploader, ownerId: orgId, wid: wid, isOrg: true);
     final gatewayDevice = GatewayDevice(manager: manager, pipeline: pipeline, connectedAt: DateTime.now());
@@ -71,6 +71,10 @@ class GatewayManager {
       if (_isShuttingDown) return;
 
       gatewayDevice.state = state;
+
+      if (state == WearableState.scanning || state == WearableState.connecting) {
+        manager.startReconnectLoop();
+      }
 
       if (state != WearableState.connected) {
         gatewayDevice.statusNote = "Disconnected";

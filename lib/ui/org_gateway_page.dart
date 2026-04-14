@@ -7,6 +7,7 @@ import 'package:vigil_collector/data/gateway_device.dart';
 import 'package:vigil_collector/data/uploader.dart';
 import 'package:vigil_collector/logger.dart';
 import 'package:vigil_collector/ui/widgets/scan_list.dart';
+import 'package:vigil_collector/utils/consts.dart';
 import 'package:vigil_collector/wearables/ble_service.dart';
 import 'package:vigil_collector/wearables/gateway_manager.dart';
 import 'package:vigil_collector/wearables/wearable_manager.dart';
@@ -35,8 +36,6 @@ class _OrgGatewayPageState extends State<OrgGatewayPage> {
   StreamSubscription? scanSub;
   StreamSubscription? updateSub;
 
-  WearableState mode = WearableState.scanning;
-
   String formatWid(String wid) {
     if (wid.length <= 8) return wid;
     return "${wid.substring(0,4)}...${wid.substring(wid.length-4)}";
@@ -62,35 +61,39 @@ class _OrgGatewayPageState extends State<OrgGatewayPage> {
   Future<void> _init() async {
     await gateway.init();
 
-    scanSub = scanManager.devices.listen((list) async {
-      if (!mounted) return;
+    scanSub = scanManager.devices.listen(_handleScanResults);
 
-      setState(() => scanResults = list);
+    // Step 1: silent scan
+    await scanManager.startScan(silent: false);
 
-      if (gateway.devices.length < maxConnections) {
-        final vigilDevices = list.where(_isVigilWearable).toList()..sort((a, b) => b.rssi.compareTo(a.rssi));
-
-        for (final result in vigilDevices) {
-          final device = result.device;
-
-          final existing = gateway.devices.values.where((d) => d.manager.ble.deviceId == device.remoteId.str);
-          for (final d in existing) {
-            d.rssi = result.rssi;
-          }
-
-          // stop when limit reached
-          if (gateway.devices.length >= maxConnections) break;
-
-          // skip if already connected or connecting
-          if (gateway.devices.values.any((d) => d.manager.ble.deviceId == device.remoteId.str)) continue;
-          if (connectingDevices.contains(device.remoteId.str)) continue;
-
-          connectingDevices.add(device.remoteId.str);
-          _connectDevice(device);
-        }
+    // Step 2: UI fallback
+    Future.delayed(const Duration(seconds: 20), () {
+      if (mounted && gateway.devices.isEmpty) {
+        setState(() => showScanPanel = true);
       }
     });
-    await scanManager.startScan(silent: false);
+  }
+
+  void _handleScanResults(List<ScanResult> list) {
+    if (!mounted) return;
+
+    setState(() => scanResults = list);
+
+    if (gateway.devices.length >= maxConnections) return;
+    
+    final candidates = list.where(_isVigilWearable).where((r) => gateway.allowedWearables.contains(normalizeId(r.device.remoteId.str))).toList()
+      ..sort((a, b) => b.rssi.compareTo(a.rssi));
+
+    for (final r in candidates) {
+      final wid = r.device.remoteId.str;
+
+      if (gateway.devices.containsKey(wid)) continue;
+      if (connectingDevices.contains(wid)) continue;
+
+      connectingDevices.add(wid);
+      _connectDevice(r.device);
+      
+    }
   }
 
   bool _isVigilWearable(ScanResult r) {
@@ -108,27 +111,17 @@ class _OrgGatewayPageState extends State<OrgGatewayPage> {
   // ------------------ CONNECT ------------------
 
   Future<void> _connect(BluetoothDevice device) async {
-    setState(() => mode = WearableState.connecting);
     await gateway.addDevice(device);
-    setState(() => mode = WearableState.connected);
   }
 
   void _connectDevice(BluetoothDevice device) async {
     try {
-      setState(() => mode = WearableState.connecting);
-
       await gateway.addDevice(device);
     } catch (e) {
       logStep("GATEWAY", "Connection FAIL: $e");
     } finally {
       connectingDevices.remove(device.remoteId.str);
-
-      // stay in connect mode if at least 1 device exists
-      if (gateway.devices.isNotEmpty) {
-        setState(() => mode = WearableState.connected);
-      } else {
-        setState(() => mode = WearableState.scanning);
-      }
+      if (mounted) setState(() {});
     }
   }
 
@@ -190,34 +183,7 @@ class _OrgGatewayPageState extends State<OrgGatewayPage> {
 
   @override
   Widget build(BuildContext context) {
-    Widget body;
-
-    switch (mode) {
-      case WearableState.scanning:
-        body = ScanList(
-          scanResults: scanResults,
-          onTap: _connect,
-          isVigil: _isVigilWearable,
-        );
-        break;
-
-      case WearableState.connecting:
-        body = const Center(
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 16),
-              Text("Connecting..."),
-            ],
-          ),
-        );
-        break;
-
-      case WearableState.connected:
-        body = _connectedView();
-        break;
-    }
+    final hasDevices = gateway.devices.isNotEmpty;
 
     return Scaffold(
       appBar: AppBar(
@@ -229,10 +195,7 @@ class _OrgGatewayPageState extends State<OrgGatewayPage> {
           ],
         ),
         actions: [
-          IconButton(
-            icon: Icon(Icons.logout),
-            onPressed: _logout,
-          ),
+          IconButton(icon: Icon(Icons.logout), onPressed: _logout),
           IconButton(
             icon: Icon(Icons.bluetooth_searching),
             onPressed: () {
@@ -241,7 +204,7 @@ class _OrgGatewayPageState extends State<OrgGatewayPage> {
           ),
         ],
       ),
-      body: body,
+      body: hasDevices ? _connectedView() : _scanningView(),
     );
   }
 
@@ -296,6 +259,23 @@ class _OrgGatewayPageState extends State<OrgGatewayPage> {
                 ),
           ),
       ],
+    );
+  }
+
+  Widget _scanningView() {
+    if (showScanPanel) {
+      return ScanList(scanResults: scanResults, onTap: _connect, isVigil: _isVigilWearable);
+    }
+
+    return const Center(
+      child: Column(
+        mainAxisAlignment: MainAxisAlignment.center,
+        children: [
+          CircularProgressIndicator(),
+          SizedBox(height: 16),
+          Text("Searching for organization devices..."),
+        ],
+      ),
     );
   }
 }
