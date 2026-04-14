@@ -2,7 +2,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:vigil_collector/logger.dart';
-import 'package:vigil_collector/ui/org_gateway_page.dart';
+import 'package:vigil_collector/ui/gateway_page.dart';
 
 import '../ui/connect_page.dart';
 import 'login_page.dart';
