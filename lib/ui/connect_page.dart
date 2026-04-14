@@ -111,7 +111,9 @@ class _ConnectWearablePageState extends State<ConnectWearablePage> {
       final db = FirebaseFirestore.instance;
 
       wearableSub = db.collection('wearables').where('assignedTo', isEqualTo: widget.uid).snapshots().listen((snap) {
-        allowedWearables = snap.docs.map((d) => d.id).toSet();
+        final wids = snap.docs.map((d) => normalizeId(d.id)).toSet();
+        allowedWearables = wids;
+        manager.allowedIds = wids;
       });
     }
 

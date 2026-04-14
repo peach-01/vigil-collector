@@ -37,6 +37,7 @@ class WearableManager {
 
   String? _lastDeviceId;
   Set<String>? allowedIds;
+  List<ScanResult> filtered = [];
 
   DateTime _lastDataTime = DateTime.now();
   DateTime _lastForward = DateTime.fromMillisecondsSinceEpoch(0);
@@ -70,9 +71,15 @@ class WearableManager {
     try {
       final ok = await ble.reconnectLastDevice();
       if (ok) {
-        _onConnected();
-        _lastDeviceId = ble.deviceId;
-        return true;
+        final wid = normalizeId(ble.deviceId);
+
+        if (allowedIds != null && !allowedIds!.contains(wid)) {
+          await ble.disconnect();
+        } else {
+          _onConnected();
+          _lastDeviceId = ble.deviceId;
+          return true;
+        }
       }
 
       await startScan();
@@ -123,11 +130,15 @@ class WearableManager {
 
     _scanSub?.cancel();
     _scanSub = ble.scanStream.listen((devices) async {
-      final filtered = allowedIds == null ? devices : devices.where((d) => allowedIds!.contains(normalizeId(d.device.remoteId.str))).toList();
-      _devices.add(filtered);
+      _devices.add(devices);
+
+      // allow auto-connect only to devices w/ known ids
+      if (allowedIds != null && allowedIds!.isNotEmpty) {
+        filtered = devices.where((d) => allowedIds!.contains(normalizeId(d.device.remoteId.str))).toList();
+      }
 
       // AUTO-CONNECT best match
-      if (filtered.isNotEmpty) {
+      if (filtered.isNotEmpty && allowedIds != null) {
         _foundAnyDevice = true;
 
         final target = filtered.firstWhere((d) => d.device.remoteId.str == _lastDeviceId, orElse: () => filtered.first);

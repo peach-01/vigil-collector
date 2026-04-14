@@ -1,6 +1,7 @@
 import 'dart:async';
 
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 import 'package:vigil_collector/data/data_pipeline.dart';
 import 'package:vigil_collector/data/gateway_device.dart';
@@ -30,7 +31,20 @@ class GatewayManager {
 
   Future<void> init() async {
     final db = FirebaseFirestore.instance;
-    orgWearableSub = db.collection('wearables').where('orgId', isEqualTo: orgId).snapshots().listen((snap) {
+    orgWearableSub = db.collection('wearables').snapshots().listen((snap) {
+      final allowed = <String>{};
+
+      for (final d in snap.docs) {
+        final data = d.data();
+
+        final wid = normalizeId(d.id);
+        final hasOrg = data['orgId'] == orgId;
+        final hasUser = (data['assignedTo'] as String?)?.isNotEmpty == true;
+
+        if (hasOrg || hasUser) {
+          allowed.add(wid);
+        }
+      }
       allowedWearables = snap.docs.map((d) => d.id).toSet();
     });
   }
@@ -46,18 +60,24 @@ class GatewayManager {
     }
   }
 
-  Future<void> addDevice(BluetoothDevice device) async {
+  Future<void> addDevice(BluetoothDevice device, {bool manual = false}) async {
     if (_isShuttingDown) return;
 
     final ble = BleWearableService();
     final manager = WearableManager(ble);
 
-    final wid = ble.deviceId;
+    await manager.connectToDevice(device);
+    await Future.delayed(const Duration(milliseconds: 500));
+
+    final wid = normalizeId(device.remoteId.str);
     if (wid == "unknown_device") return;
     if (devices.containsKey(wid)) return;
-
-    final connected = await manager.connectToDevice(device);
-    await Future.delayed(const Duration(milliseconds: 500));
+    
+    // block auto-connect to non-wearables
+    if (!manual && !allowedWearables.contains(wid)) {
+      if (kDebugMode) logStep("GATEWAY", "Blocked auto-connect: $wid");
+      return;
+    }
 
     final pipeline = DataPipeline(uploader: uploader, ownerId: orgId, wid: wid, isOrg: true);
     final gatewayDevice = GatewayDevice(manager: manager, pipeline: pipeline, connectedAt: DateTime.now());

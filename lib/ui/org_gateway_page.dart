@@ -79,6 +79,7 @@ class _OrgGatewayPageState extends State<OrgGatewayPage> {
 
     setState(() => scanResults = list);
 
+    if (gateway.allowedWearables.isEmpty) return;
     if (gateway.devices.length >= maxConnections) return;
     
     final candidates = list.where(_isVigilWearable).where((r) => gateway.allowedWearables.contains(normalizeId(r.device.remoteId.str))).toList()
@@ -111,7 +112,7 @@ class _OrgGatewayPageState extends State<OrgGatewayPage> {
   // ------------------ CONNECT ------------------
 
   Future<void> _connect(BluetoothDevice device) async {
-    await gateway.addDevice(device);
+    await gateway.addDevice(device, manual: true);
   }
 
   void _connectDevice(BluetoothDevice device) async {
